@@ -364,7 +364,6 @@ body::before {
 }
 .tabbar {
   border-top-left-radius: 20px; border-top-right-radius: 20px;
-  margin-bottom: max(0px, var(--sab));
 }
 .tab-item { transition: transform .22s ease, color .2s ease, opacity .2s ease; }
 .tab-item:active { transform: translateY(-2px) scale(0.95); }

@@ -416,7 +416,8 @@ async function shareCard(mk) {
   const days = new Set(monthEvents.map((e) => e.dateKey)).size;
   const focusMin = monthEvents.filter((e) => e.kind === 'focus').reduce((a, e) => a + (e.minutes || 0), 0);
   const bCount = badges.filter((b) => monthKeyOf(new Date(b.ts).toISOString().slice(0, 10)) === mk).length;
-  const cv = h('canvas', { width: 750, height: 1000 });
+  const catCount = S.cats ? S.cats.size : 0;
+  const cv = h('canvas', { width: 750, height: 1200 });
   const c = cv.getContext('2d');
   const rr = (x, y2, w, hh, r, fill) => {
     c.fillStyle = fill;
@@ -425,25 +426,80 @@ async function shareCard(mk) {
     else c.rect(x, y2, w, hh);
     c.fill();
   };
-  c.fillStyle = '#F7F3EA'; c.fillRect(0, 0, 750, 1000);
-  rr(40, 40, 670, 920, 36, '#748F72');
-  rr(56, 56, 638, 888, 28, '#FFFDF8');
-  c.fillStyle = '#2F3430'; c.font = 'bold 44px sans-serif';
-  c.fillText('今天没白过', 96, 150);
-  c.font = '26px sans-serif'; c.fillStyle = '#747A73';
-  c.fillText(monthLabel(mk) + ' · 我的生活足迹', 96, 196);
-  const items = [['有效记录天数', days + ' 天'], ['累计专注', fmtMin(focusMin)], ['解锁徽章', bCount + ' 枚'], ['生活分类', (S.cats ? S.cats.size : 0) + ' 类']];
-  let y = 280;
-  for (const [k, v] of items) {
-    rr(96, y, 558, 120, 22, '#F7F3EA');
-    c.fillStyle = '#747A73'; c.font = '26px sans-serif'; c.fillText(k, 130, y + 50);
-    c.fillStyle = '#2F3430'; c.font = 'bold 52px sans-serif'; c.fillText(String(v), 130, y + 100);
-    y += 148;
+  // 渐变背景
+  const grad = c.createLinearGradient(0, 0, 0, 1200);
+  grad.addColorStop(0, '#F0E8D5');
+  grad.addColorStop(0.5, '#E8E0CC');
+  grad.addColorStop(1, '#D8CCB0');
+  c.fillStyle = grad;
+  c.fillRect(0, 0, 750, 1200);
+  // 装饰圆
+  c.fillStyle = 'rgba(116,143,114,0.08)';
+  c.beginPath(); c.arc(650, 120, 100, 0, Math.PI * 2); c.fill();
+  c.beginPath(); c.arc(80, 1100, 130, 0, Math.PI * 2); c.fill();
+  c.fillStyle = 'rgba(216,169,77,0.1)';
+  c.beginPath(); c.arc(100, 150, 60, 0, Math.PI * 2); c.fill();
+  // 主卡片
+  rr(50, 50, 650, 1100, 40, '#FFFDF8');
+  // 顶部装饰条
+  rr(50, 50, 650, 8, 4, '#748F72');
+  // 标题区域
+  c.fillStyle = '#748F72';
+  c.beginPath(); c.arc(375, 180, 48, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#FFFDF8';
+  c.font = 'bold 36px sans-serif';
+  c.textAlign = 'center';
+  c.fillText('☀', 375, 195);
+  c.textAlign = 'left';
+  c.fillStyle = '#2F3430';
+  c.font = 'bold 42px sans-serif';
+  c.fillText('今天没白过', 200, 290);
+  c.font = '24px sans-serif';
+  c.fillStyle = '#747A73';
+  c.fillText(monthLabel(mk) + ' · 月度生活足迹', 200, 328);
+  // 分隔线
+  c.strokeStyle = '#E7E0D2';
+  c.lineWidth = 2;
+  c.beginPath(); c.moveTo(100, 370); c.lineTo(650, 370); c.stroke();
+  // 数据卡片 - 2x2 网格
+  const items = [
+    ['🌿', '有效记录', days + ' 天', '#748F72'],
+    ['⏱', '累计专注', fmtMin(focusMin), '#5B8DB8'],
+    ['🏅', '解锁徽章', bCount + ' 枚', '#D8A94D'],
+    ['📊', '生活分类', catCount + ' 类', '#D78367'],
+  ];
+  const cardW = 260, cardH = 180, gap = 20;
+  const startX = 100, startY = 410;
+  items.forEach(([icon, label, value, color], i) => {
+    const col = i % 2, row = Math.floor(i / 2);
+    const x = startX + col * (cardW + gap);
+    const y = startY + row * (cardH + gap);
+    rr(x, y, cardW, cardH, 24, '#F7F3EA');
+    c.fillStyle = color;
+    c.font = '32px sans-serif';
+    c.fillText(icon, x + 24, y + 52);
+    c.fillStyle = '#747A73';
+    c.font = '20px sans-serif';
+    c.fillText(label, x + 24, y + 90);
+    c.fillStyle = '#2F3430';
+    c.font = 'bold 40px sans-serif';
+    c.fillText(value, x + 24, y + 145);
+  });
+  // 底部标语
+  c.fillStyle = '#D78367';
+  c.font = 'bold 26px sans-serif';
+  c.textAlign = 'center';
+  c.fillText('把普通日子变成看得见的成就', 375, 920);
+  c.fillStyle = '#9BA39B';
+  c.font = '20px sans-serif';
+  c.fillText('— 今天没白过 · 生活记录 —', 375, 960);
+  // 底部装饰
+  c.fillStyle = 'rgba(116,143,114,0.15)';
+  for (let i = 0; i < 5; i++) {
+    c.beginPath();
+    c.arc(200 + i * 80, 1020, 4, 0, Math.PI * 2);
+    c.fill();
   }
-  c.fillStyle = '#D78367'; c.font = 'bold 30px sans-serif';
-  c.fillText('把普通日子变成看得见的成就', 96, y + 30);
-  c.fillStyle = '#9BA39B'; c.font = '22px sans-serif';
-  c.fillText('制作人：yanzhu · 今天没白过', 96, y + 90);
   const blob = await new Promise((r) => cv.toBlob((b) => r(b), 'image/png'));
   const url = URL.createObjectURL(blob);
   const a = h('a', { href: url, download: `今天没白过_月度回顾_${mk}.png` });
