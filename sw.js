@@ -1,5 +1,5 @@
 // 今天没白过 · Service Worker（App Shell 预缓存 + 运行时缓存；更新由用户确认后再刷新）
-const VERSION = 'tjmbg-v1.7.3';
+const VERSION = 'tjmbg-v1.7.4';
 const PRECACHE = [
   './',
   './index.html',
@@ -32,6 +32,7 @@ const PRECACHE = [
   './icons/icon-maskable-512.png',
   './icons/apple-touch-icon.png',
   './assets/manifest.json',
+  './assets/bg/default-room.png',
 ];
 
 self.addEventListener('install', (e) => {

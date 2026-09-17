@@ -91,7 +91,7 @@ export function renderOnboard(container, onDone) {
           sel = p.petId; sound.play('tap');
           [...cards.children].forEach((c) => c.classList.toggle('on', c === e.currentTarget));
         },
-      }, h('div', { class: 'pv', innerHTML: petSVG(p.petId) }), h('div', { class: 'nm' }, p.name), h('div', { class: 'sp' }, p.species))));
+      }, h('div', { class: 'pv' }, h('img', { src: './assets/pets/' + p.petId + '.png', alt: p.name, style: 'width:100%;height:100%;object-fit:contain' })), h('div', { class: 'nm' }, p.name), h('div', { class: 'sp' }, p.species))));
     return h('div', { class: 'rise' },
       h('div', { class: 'ob-dots' }, dot(1), dot(2), dot(3)),
       h('div', { class: 'ob-hero', style: 'padding-top:4px' }, h('div', { class: 'ob-title', style: 'font-size:20px' }, '选择你的初始伙伴'), h('div', { class: 'ob-slogan' }, '另外两只以后也能免费领取')),

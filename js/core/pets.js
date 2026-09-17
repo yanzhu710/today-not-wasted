@@ -193,7 +193,7 @@ export function renderHomeScene(container, layout, petRow, { onClickPet = null, 
   if (bgItem) {
     container.append(h('img', { class: 'scene-bg', src: shopArt(layout.bg), alt: bgItem.name, draggable: 'false' }));
   } else {
-    container.append(h('div', { class: 'scene-bg scene-bg-default' }));
+    container.append(h('img', { class: 'scene-bg', src: './assets/bg/default-room.png', alt: '默认房间', draggable: 'false' }));
   }
   // 墙面与远景
   for (const key of ['wall1', 'wall2', 'cabinet']) {
