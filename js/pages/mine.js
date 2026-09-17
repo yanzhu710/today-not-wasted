@@ -167,7 +167,7 @@ export async function renderMine(view, ctx) {
       h('div', { class: 'form-hint', style: 'margin-top:8px;line-height:1.9' },
         '数据仅保存在本机浏览器（IndexedDB），不上传任何服务器；不包含云端账户、支付与广告。节假日与调休数据来自国务院办公厅通知。')));
 
-  view.append(profileCard, ptsCard, rewardCard, setCard, dataCard, statusCard, installCard, preflightCard, aboutCard);
+  view.append(profileCard, ptsCard, rewardCard, setCard, dataCard, installCard, aboutCard);
 }
 function setRow(label, ctrl) {
   return h('div', { class: 'row-item' }, h('span', { style: 'font-size:14px;font-weight:600;flex:none' }, label), ctrl);

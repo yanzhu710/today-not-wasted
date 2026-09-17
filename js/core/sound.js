@@ -35,7 +35,9 @@ function tone(freq, at, dur, { type = 'sine', gain = 0.3, slideTo = null } = {})
   o.start(at); o.stop(at + dur + 0.05);
 }
 export function play(name) {
-  if (_muted || !ctx || ctx.state !== 'running') return;
+  if (_muted || !ctx) return;
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+  if (ctx.state !== 'running') return;
   const t = ctx.currentTime;
   switch (name) {
     case 'tap': tone(1180, t, 0.05, { type: 'triangle', gain: 0.14 }); break;

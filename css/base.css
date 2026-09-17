@@ -257,7 +257,7 @@ textarea.input { resize: vertical; line-height: 1.55; }
 .badge-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .badge-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .badge-imgbox { width: 72px; height: 72px; border-radius: 18px; overflow: hidden; background: var(--surface2); border: 1px solid var(--line); flex: none; }
-.badge-imgbox img { width: 100%; height: 100%; display: block; }
+.badge-imgbox img { width: 100%; height: 100%; display: block; object-fit: cover; }
 .badge-imgbox.locked img { filter: grayscale(1) opacity(0.35); }
 .badge-cell .nm { font-size: 11px; color: var(--muted); max-width: 76px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .badge-cell.got .nm { color: var(--text); font-weight: 600; }
@@ -265,7 +265,7 @@ textarea.input { resize: vertical; line-height: 1.55; }
 /* 商品格 */
 .shop-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .shop-cell { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 8px; text-align: center; position: relative; }
-.shop-cell img { width: 100%; aspect-ratio: 1; border-radius: 12px; display: block; background: var(--surface2); }
+.shop-cell img { width: 100%; aspect-ratio: 1; border-radius: 12px; display: block; background: var(--surface2); object-fit: cover; }
 .shop-cell.locked img { filter: grayscale(1) opacity(0.4); }
 .shop-cell .nm { font-size: 12px; font-weight: 600; margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shop-cell .pr { font-size: 11.5px; color: var(--reward); font-weight: 700; font-variant-numeric: tabular-nums; }
