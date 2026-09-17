@@ -340,10 +340,18 @@ function renderInsp(box, ctx) {
   const cardBox = h('div');
   let filters = { min: null, scene: null, type: null };
   let current = null;
-  const pool = () => INSPIRATIONS.filter((x) =>
-    (filters.min == null || x.min === filters.min) &&
-    (filters.scene == null || x.scene === filters.scene) &&
-    (filters.type == null || x.type === filters.type));
+  async function customList() {
+    const insp = await loadKV('inspiration');
+    return insp.custom || [];
+  }
+  const pool = async () => {
+    const custom = await customList();
+    const all = [...INSPIRATIONS, ...custom];
+    return all.filter((x) =>
+      (filters.min == null || x.min === filters.min) &&
+      (filters.scene == null || x.scene === filters.scene) &&
+      (filters.type == null || x.type === filters.type));
+  };
   const seg = (list, key, labels) => h('div', { class: 'seg' },
     h('button', { class: 'on', onclick: (e) => { filters[key] = null; mark(e); draw(); } }, labels[0]),
     list.map(([v, lb]) => h('button', { onclick: (e) => { filters[key] = v; mark(e); draw(); } }, lb)));
@@ -355,7 +363,7 @@ function renderInsp(box, ctx) {
       seg([[5, '5分钟'], [15, '15分钟'], [30, '半小时'], [60, '一小时']], 'min', ['任意时长']),
       seg([['home', '在家'], ['out', '出门']], 'scene', ['都可以']),
       seg([['relax', '放松'], ['tidy', '整理'], ['study', '学习'], ['sport', '运动'], ['social', '陪伴']], 'type', ['都可以'])));
-    const p = pool();
+    const p = await pool();
     if (!p.length) { cardBox.append(h('div', { class: 'card empty' }, '这个组合下暂时没有灵感，换个条件试试')); return; }
     current = p[Math.floor(Math.random() * p.length)];
     cardBox.append(h('div', { class: 'card insp-card' },
@@ -388,8 +396,33 @@ function renderInsp(box, ctx) {
     favBox.append(card);
   }
   box.append(h('div', { class: 'card' },
-    h('div', { class: 'card-title' }, icon('idea'), '生活灵感'),
+    h('div', { class: 'card-title' }, icon('idea'), '生活灵感',
+      h('button', { class: 'more', onclick: () => createInspiration() }, icon('plus'), '创建')),
     h('div', { class: 'form-hint', style: 'margin-bottom:8px' }, '按你现在的时间和场景，随机推荐一件马上能做的小事（本地规则库，不联网）')),
     cardBox, favBox);
   draw(); drawFav();
+}
+
+function createInspiration() {
+  formDlg({
+    title: '创建灵感',
+    submitLabel: '保存',
+    fields: [
+      { key: 'title', label: '灵感内容', type: 'text', placeholder: '例如：泡杯茶发呆5分钟', required: true },
+      { key: 'min', label: '建议时长（分钟）', type: 'number', value: '15', min: 1, max: 180 },
+      { key: 'scene', label: '场景', type: 'select', options: [['home', '在家'], ['out', '出门']], value: 'home' },
+      { key: 'cat', label: '分类', type: 'select', options: CATS.map((c) => [c.id, c.name]) },
+    ],
+  }).then(async (v) => {
+    if (!v || !v.title) return;
+    const insp = await loadKV('inspiration');
+    if (!insp.custom) insp.custom = [];
+    insp.custom.push({
+      t: v.title.trim(), d: '我的自定义灵感',
+      min: Number(v.min) || 15, scene: v.scene || 'home', type: v.cat || 'relax',
+      cat: v.cat || 'other',
+    });
+    await saveKV('inspiration', insp);
+    toast('灵感已保存', { ic: 'check' });
+  });
 }

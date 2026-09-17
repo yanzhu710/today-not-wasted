@@ -63,7 +63,7 @@ const KV_DEFAULTS = {
   home_layout: { bg: null, rug: null, bed: null, desk: [], wall: [], ground: [], cabinet: null },
   showcase: [],
   focus_state: null,
-  inspiration: { favorites: [], hidden: [] },
+  inspiration: { favorites: [], hidden: [], custom: [] },
   quick_buttons: null, // 首次使用时按默认生成
 };
 
