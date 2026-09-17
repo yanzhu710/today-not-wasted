@@ -420,7 +420,7 @@ body::before {
   border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
   box-shadow: 0 20px 48px rgba(40, 34, 24, 0.18);
 }
-.confetti-mini { width: 8px; height: 10px; border-radius: 3px; animation: confettiBurst .95s cubic-bezier(.2,.8,.25,1) forwards; box-shadow: 0 1px 0 rgba(255,255,255,.28) inset; }
+.confetti-mini { width: 8px; height: 10px; border-radius: 3px; animation: confettiBurst .95s cubic-bezier(.2,.8,.25,1) forwards; box-shadow: 0 1px 0 rgba(255,255,255,.28) inset; pointer-events: none; }
 .confetti-dot { border-radius: 999px; }
 .confetti-ribbon { border-radius: 2px; }
 .sparkle-burst { position: absolute; transform: translate(-50%, -50%); pointer-events: none; animation: sparkleBurst .85s cubic-bezier(.2,.8,.25,1) forwards; filter: drop-shadow(0 2px 4px rgba(255,244,214,.32)); }
