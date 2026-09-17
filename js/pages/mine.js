@@ -5,7 +5,7 @@ import { balance, stats, clearAllForReset, grantOnce, recomputeStats, confirmRev
 import { h, icon, todayKey, fmtCN, fmtMoney, uid } from '../core/util.js';
 import { openModal, formDlg, actionSheet, confirmDlg, toast, configure } from '../core/fx.js';
 import { makeZip, readZip } from '../core/zip.js';
-import { refreshSettings, setProfile, canInstallApp, promptInstallApp, checkForUpdate } from '../main.js';
+import { refreshSettings, setProfile, canInstallApp, promptInstallApp } from '../main.js';
 import { fillAvatar } from './onboard.js';
 import { APP_NAME, APP_VERSION, APP_AUTHOR, RELEASE_HIGHLIGHTS } from '../core/appmeta.js';
 import * as sound from '../core/sound.js';
@@ -163,7 +163,7 @@ export async function renderMine(view, ctx) {
       h('div', { style: 'font-size:18px;font-weight:800' }, APP_NAME),
       h('div', { class: 'row-sub', style: 'justify-content:center;margin-top:2px' }, '把普通日子变成看得见的成就'),
       h('div', { class: 'row-sub', style: 'justify-content:center;margin-top:10px' }, `版本 v${APP_VERSION} · 本机档案 · 全部免费`),
-      h('button', { class: 'btn btn-ghost btn-sm', style: 'margin-top:12px', onclick: () => checkForUpdate() }, icon('refresh'), '检查更新'),
+      h('button', { class: 'btn btn-ghost btn-sm', style: 'margin-top:12px', onclick: async () => { const m = await import('../main.js'); m.checkForUpdate(); } }, icon('refresh'), '检查更新'),
       h('div', { style: 'margin-top:12px;font-weight:700;color:var(--primary-deep)' }, `制作人：${APP_AUTHOR}`),
       h('div', { class: 'form-hint', style: 'margin-top:8px;line-height:1.9' },
         '数据仅保存在本机浏览器（IndexedDB），不上传任何服务器；不包含云端账户、支付与广告。节假日与调休数据来自国务院办公厅通知。')));
