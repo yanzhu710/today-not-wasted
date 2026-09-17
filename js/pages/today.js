@@ -8,6 +8,7 @@ import { queueSettle, actionSheet, confirmDlg, toast } from '../core/fx.js';
 import { openFocus } from './focus.js';
 import { habitDueOn, habitFreqLabel } from './plan.js';
 import * as sound from '../core/sound.js';
+import { badgeArt } from '../core/art.js';
 
 const QUICK_DEFAULTS = [
   { id: 'q_walk', label: '散步', category: 'sport', minutes: 30 },
@@ -128,7 +129,6 @@ export async function renderToday(view, ctx) {
 }
 
 // 徽章图片填充（生成器是同步的，这里统一设置 src）
-import { badgeArt } from '../core/art.js';
 export function fillBadgeImgs(rootEl) {
   rootEl.querySelectorAll('img[data-badge]').forEach((img) => { img.src = badgeArt(img.dataset.badge); });
 }
