@@ -114,8 +114,8 @@ export async function renderToday(view, ctx) {
           const b = BADGES.find((x) => x.id === r.badgeId);
           if (!b) return null;
           return h('div', { class: 'badge-mini' }, h('img', { 'data-badge': b.id, alt: b.name }), h('div', { style: 'min-width:0' }, h('div', { class: 't' }, b.name), h('div', { class: 's' }, b.series)));
-        })) : h('div', { class: 'empty' }, '完成第一件事，解锁第一枚徽章'))),
-  );
+        })) : h('div', { class: 'empty' }, '完成第一件事，解锁第一枚徽章')),
+);
 
   swipe.append(s1, s2, s3);
   const dots = h('div', { class: 'swipe-dots' },
