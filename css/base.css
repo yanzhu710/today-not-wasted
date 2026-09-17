@@ -229,6 +229,12 @@ textarea.input { resize: vertical; line-height: 1.55; }
 .modal-foot .btn { flex: 1; }
 .confirm-msg { font-size: 14.5px; color: var(--muted); line-height: 1.7; padding: 4px 0 8px; }
 
+/* 版本更新弹窗 */
+.update-sub { font-size: 13.5px; color: var(--muted); line-height: 1.6; margin-bottom: 12px; }
+.update-list { display: flex; flex-direction: column; gap: 10px; }
+.update-item { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; line-height: 1.6; color: var(--text); }
+.update-dot { flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--accent, #748F72); margin-top: 7px; }
+
 /* 底部操作面板 */
 .sheet-list { display: flex; flex-direction: column; padding-bottom: 4px; }
 .sheet-item {

@@ -7,7 +7,7 @@ import { h, qs, icon, todayKey, fmtCN, greeting, uid } from './core/util.js';
 import * as sound from './core/sound.js';
 import * as fx from './core/fx.js';
 import { holidayName, dayInfo, nextHoliday } from './core/holidays.js';
-import { APP_NAME } from './core/appmeta.js';
+import { APP_NAME, APP_VERSION, RELEASE_HIGHLIGHTS } from './core/appmeta.js';
 import { renderOnboard } from './pages/onboard.js';
 import { renderToday } from './pages/today.js';
 import { renderPlan } from './pages/plan.js';
@@ -196,21 +196,43 @@ function registerPWA() {
       if (!nw) return;
       nw.addEventListener('statechange', () => {
         if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-          if (qs('.update-bar')) return;
-          const bar = h('div', { class: 'update-bar' },
-            h('span', null, '检测到新版本'),
-            h('button', {
-              class: 'btn btn-sm btn-primary', onclick: () => {
-                nw.postMessage({ type: 'SKIP_WAITING' });
-              },
-            }, '立即更新'),
-            h('button', { class: 'iconbtn update-close', 'aria-label': '关闭', onclick: () => bar.remove() }, icon('close')));
-          qs('#fx-root').append(bar);
-          navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true });
+          showUpdateModal(nw);
         }
       });
     });
   }).catch(() => {});
+}
+
+async function showUpdateModal(worker) {
+  const { openModal } = await import('./core/fx.js');
+  const list = h('div', { class: 'update-list' },
+    RELEASE_HIGHLIGHTS.map((line) => h('div', { class: 'update-item' },
+      h('span', { class: 'update-dot' }),
+      h('span', null, line)
+    ))
+  );
+  const content = h('div', null,
+    h('p', { class: 'update-sub' }, '已为你准备好新版本，更新后体验更佳'),
+    list
+  );
+  openModal({
+    title: `新版本 v${APP_VERSION}`,
+    content,
+    actions: [
+      {
+        label: '稍后更新',
+        onClick: (close) => { close(); },
+      },
+      {
+        label: '立即更新',
+        primary: true,
+        onClick: (close) => {
+          worker.postMessage({ type: 'SKIP_WAITING' });
+          navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true });
+        },
+      },
+    ],
+  });
 }
 
 boot();
