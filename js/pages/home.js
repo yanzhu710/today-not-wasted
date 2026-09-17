@@ -372,7 +372,7 @@ async function renderBadges(box, ctx) {
 function badgeDetail(b, got, anchor = null) {
   const rar = badgeRarity(b.points);
   const preview = h('button', { class: 'badge-detail-hero' + (got ? ' got' : ''), onclick: (e) => playBadgeTapFx(e.currentTarget, !!got, b.points) },
-    h('img', { src: badgeArt(b.id), alt: b.name, style: 'width:140px;height:140px;border-radius:28px;margin:4px auto;background:var(--surface2)' + (got ? '' : ';filter:grayscale(1) opacity(0.45)') }),
+    h('img', { src: badgeArt(b.id), alt: b.name, style: 'width:140px;height:140px;border-radius:50%;margin:4px auto;background:transparent;object-fit:cover' + (got ? '' : ';filter:grayscale(1) opacity(0.45)') }),
     h('span', { class: 'badge-detail-hint' }, got ? '反复点它也会继续撒彩花' : '解锁后可再次互动'));
   openModal({
     title: got ? b.name : '未解锁',

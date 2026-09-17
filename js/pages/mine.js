@@ -309,12 +309,10 @@ function releaseNotes() {
   openModal({
     title: `版本说明 · v${APP_VERSION}`,
     content: h('div', { class: 'form-list' },
-      h('div', { class: 'confirm-msg' }, '这是当前的最终上线前精修版，重点补齐上线可用性、交互细节、设备侧稳定性与交付说明。'),
       h('div', { class: 'card', style: 'margin:0;padding:12px;background:var(--surface2);box-shadow:none' },
         RELEASE_HIGHLIGHTS.map((t, i) => h('div', { class: 'row-item', style: i === RELEASE_HIGHLIGHTS.length - 1 ? 'border-bottom:0' : '' },
           h('span', { class: 'tag tag-pri', style: 'margin-right:2px' }, String(i + 1).padStart(2, '0')),
-          h('div', { class: 'row-main' }, h('div', { class: 'row-title', style: 'font-size:13.5px;white-space:normal' }, t))))),
-      h('div', { class: 'form-hint' }, '如果后面还要继续迭代，建议下一步只补真实业务功能，不要再大改视觉骨架。')),
+          h('div', { class: 'row-main' }, h('div', { class: 'row-title', style: 'font-size:13.5px;white-space:normal' }, t)))))),
     actions: [{ label: '知道了', cls: 'btn-primary', onClick: (c) => c() }],
   });
 }
