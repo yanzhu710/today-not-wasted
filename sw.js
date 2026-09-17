@@ -1,5 +1,5 @@
 // 今天没白过 · Service Worker（App Shell 预缓存 + 运行时缓存；更新由用户确认后再刷新）
-const VERSION = 'tjmbg-v1.4.0';
+const VERSION = 'tjmbg-v1.5.0';
 const PRECACHE = [
   './',
   './index.html',
@@ -35,7 +35,7 @@ const PRECACHE = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(PRECACHE)));
 });
 self.addEventListener('activate', (e) => {
   e.waitUntil(
