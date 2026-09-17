@@ -27,6 +27,30 @@
 .ob-done-list { display: flex; flex-direction: column; gap: 10px; padding: 8px 2px; }
 
 /* ---- 今天 ---- */
+.today-swipe {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.today-swipe::-webkit-scrollbar { display: none; }
+.today-screen {
+  flex: 0 0 100%;
+  scroll-snap-align: start;
+  padding: 0 16px;
+}
+.swipe-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 0 6px;
+}
+.swipe-dots i {
+  width: 6px; height: 6px; border-radius: 99px;
+  background: var(--line); transition: all .25s;
+}
+.swipe-dots i.on { width: 18px; background: var(--primary); }
 .hi-card { background: linear-gradient(140deg, var(--primary), var(--primary-deep)); color: #FFFDF8; border: 0; }
 .hi-card .hi-date { font-size: 13px; opacity: 0.92; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .hi-card .hi-main { font-size: 17px; font-weight: 800; margin-top: 6px; }

@@ -35,8 +35,11 @@ export async function renderToday(view, ctx) {
   const weekDone = new Set(events.map((e) => e.dateKey)).size;
 
   view.innerHTML = '';
-  view.append(
-    // 今日概览
+  // 横向滑动容器：每屏占满宽度，左右滑动切换
+  const swipe = h('div', { class: 'today-swipe' });
+
+  // 第1屏：今日概览 + 任务
+  const s1 = h('div', { class: 'today-screen' },
     h('div', { class: 'card hi-card rise' },
       h('div', { class: 'hi-date' },
         h('span', null, new Date().getFullYear() + '年' + (new Date().getMonth() + 1) + '月' + new Date().getDate() + '日 · 周' + '一二三四五六日'[weekdayOf(dk) - 1]),
@@ -45,11 +48,11 @@ export async function renderToday(view, ctx) {
       h('div', { class: 'hi-main' }, summary.tasks ? `今日已完成 ${summary.doneTasks}/${summary.tasks} 件` : '今天还没有安排，记一件小事就算数'),
       h('div', { class: 'hi-sub' }, `今日积分 +${summary.points}/${summary.pointsCap} · 有效记录 ${summary.validEvents} 条`),
       h('div', { class: 'bar' }, h('i', { style: `width:${Math.min(100, Math.round((summary.points / summary.pointsCap) * 100))}%` }))),
-
-    // 优先事项
     taskSection(undone, done, tplById, ctx),
+  );
 
-    // 习惯
+  // 第2屏：习惯 + 快捷记录
+  const s2 = h('div', { class: 'today-screen' },
     h('div', { class: 'card' },
       h('div', { class: 'card-title' }, icon('task'), '今天要做的习惯',
         h('button', { class: 'more', onclick: () => location.hash = '#/plan' }, '全部', icon('right'))),
@@ -72,7 +75,6 @@ export async function renderToday(view, ctx) {
         return strip;
       })() : h('div', { class: 'empty' }, '还没有习惯，', h('button', { class: 'act', onclick: () => location.hash = '#/plan' }, '去创建一个'))),
 
-    // 快捷记录
     h('div', { class: 'card' },
       h('div', { class: 'card-title' }, icon('quick'), '快捷记录',
         h('button', { class: 'more', onclick: () => manageQuickButtons(ctx) }, '管理', icon('right'))),
@@ -92,8 +94,10 @@ export async function renderToday(view, ctx) {
       h('div', { class: 'quick-journal' },
         h('button', { class: 'btn btn-soft btn-sm', style: 'flex:1', onclick: quickRecordDialog }, icon('quick'), '记一件完成的事'),
         h('button', { class: 'btn btn-warn btn-sm', style: 'flex:1', onclick: quickLedgerDialog }, icon('ledger'), '快速记账'))),
+  );
 
-    // 专注 + 本周
+  // 第3屏：统计 + 徽章
+  const s3 = h('div', { class: 'today-screen' },
     h('div', { class: 'stat-row' },
       h('button', { class: 'stat-cell', style: 'cursor:pointer', onclick: () => openFocus() },
         h('div', { class: 'v', style: 'color:var(--primary-deep)' }, icon('focus')), h('div', { class: 'k' }, '开始专注')),
@@ -101,7 +105,6 @@ export async function renderToday(view, ctx) {
       h('button', { class: 'stat-cell', style: 'cursor:pointer', onclick: () => location.hash = '#/footprint' },
         h('div', { class: 'v num', style: 'color:var(--reward)' }, String(balance())), h('div', { class: 'k' }, '积分余额'))),
 
-    // 最近徽章
     h('div', { class: 'card' },
       h('div', { class: 'card-title' }, icon('badge'), '最近解锁的徽章',
         h('button', { class: 'more', onclick: () => location.hash = '#/home' }, '收藏册', icon('right'))),
@@ -110,8 +113,17 @@ export async function renderToday(view, ctx) {
           const b = BADGES.find((x) => x.id === r.badgeId);
           if (!b) return null;
           return h('div', { class: 'badge-mini' }, h('img', { 'data-badge': b.id, alt: b.name }), h('div', { style: 'min-width:0' }, h('div', { class: 't' }, b.name), h('div', { class: 's' }, b.series)));
-        })) : h('div', { class: 'empty' }, '完成第一件事，解锁第一枚徽章')));
+        })) : h('div', { class: 'empty' }, '完成第一件事，解锁第一枚徽章'))),
+  );
 
+  swipe.append(s1, s2, s3);
+  const dots = h('div', { class: 'swipe-dots' },
+    h('i', { class: 'on' }), h('i', null), h('i', null));
+  swipe.addEventListener('scroll', () => {
+    const idx = Math.round(swipe.scrollLeft / swipe.clientWidth);
+    [...dots.children].forEach((d, i) => d.classList.toggle('on', i === idx));
+  });
+  view.append(swipe, dots);
   fillBadgeImgs(view);
 }
 

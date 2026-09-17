@@ -157,7 +157,7 @@ async function openPlusSheet() {
   await actionSheet('记一笔今天', [
     { ic: 'quick', label: '记一件完成的事', sub: '事情已经做完，直接记下来', onClick: () => import('./pages/today.js').then((m) => m.quickRecordDialog()) },
     { ic: 'task', label: '新建任务', onClick: () => import('./pages/today.js').then((m) => m.taskDialog()) },
-    { ic: 'focus', label: '开始专注', onClick: () => openFocus() },
+    { ic: 'focus', label: '开始专注', onClick: () => openFocus().catch((e) => { console.error('focus error', e); toast('专注计时打开失败，请重试', { ic: 'error' }); }) },
     { ic: 'ledger', label: '记一笔', onClick: () => import('./pages/today.js').then((m) => m.quickLedgerDialog()) },
     { ic: 'journal', label: '写一句', onClick: () => import('./pages/footprint.js').then((m) => m.journalDialog()) },
     { ic: 'heart', label: '记录心情', onClick: () => import('./pages/footprint.js').then((m) => m.journalDialog({ moodOnly: true })) },
