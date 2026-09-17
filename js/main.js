@@ -240,3 +240,20 @@ async function showUpdateModal(worker) {
 }
 
 boot();
+
+// 供"我的"页面手动调用：检查更新
+export async function checkForUpdate() {
+  if (!('serviceWorker' in navigator)) { fx.toast('当前浏览器不支持更新', { ic: 'star' }); return; }
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) { fx.toast('正在初始化，请稍后再试', { ic: 'star' }); return; }
+    // 已有 waiting worker
+    if (reg.waiting) { showUpdateModal(reg.waiting); return; }
+    // 手动检查更新
+    await reg.update();
+    if (reg.waiting) { showUpdateModal(reg.waiting); return; }
+    fx.toast('已是最新版本', { ic: 'check' });
+  } catch {
+    fx.toast('检查更新失败，请稍后再试', { ic: 'star' });
+  }
+}
