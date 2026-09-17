@@ -204,6 +204,6 @@ export async function fillAvatar(el, photoId) {
   const row = await get('photos', photoId).catch(() => null);
   if (row && row.blob) {
     el.innerHTML = '';
-    el.append(h('img', { class: 'avatar', src: URL.createObjectURL(row.blob), style: 'width:100%;height:100%' }));
+    el.append(h('img', { src: URL.createObjectURL(row.blob), style: 'width:100%;height:100%;object-fit:cover;border-radius:50%;display:block' }));
   }
 }
