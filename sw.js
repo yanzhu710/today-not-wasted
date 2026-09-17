@@ -1,5 +1,5 @@
 // 今天没白过 · Service Worker（App Shell 预缓存 + 运行时缓存；更新由用户确认后再刷新）
-const VERSION = 'tjmbg-v1.9.0';
+const VERSION = 'tjmbg-v1.9.1';
 const PRECACHE = [
   './',
   './index.html',

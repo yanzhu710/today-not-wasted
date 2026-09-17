@@ -42,6 +42,7 @@ export async function renderToday(view, ctx) {
   const tabs = [
     { id: 'overview', name: '概览' },
     { id: 'habit', name: '习惯' },
+    { id: 'ledger', name: '记账' },
     { id: 'stats', name: '统计' },
   ];
   const tabBar = h('div', { class: 'seg', style: 'margin:0 0 12px' },
@@ -106,8 +107,26 @@ export async function renderToday(view, ctx) {
               h('span', { class: 'qb-t' }, q.label),
               h('span', { class: 'qb-s' }, q.minutes ? fmtMin(q.minutes) : q.count ? `×${q.count}` : catName(q.category))))),
           h('div', { class: 'quick-journal' },
-            h('button', { class: 'btn btn-soft btn-sm', style: 'flex:1', onclick: quickRecordDialog }, icon('quick'), '记一件完成的事'),
-            h('button', { class: 'btn btn-warn btn-sm', style: 'flex:1', onclick: quickLedgerDialog }, icon('ledger'), '快速记账'))),
+            h('button', { class: 'btn btn-soft btn-sm', style: 'flex:1', onclick: quickRecordDialog }, icon('quick'), '记一件完成的事'))),
+      );
+    } else if (curTab === 'ledger') {
+      contentBox.append(
+        h('div', { class: 'card' },
+          h('div', { class: 'card-title' }, icon('ledger'), '快速记账',
+            h('button', { class: 'more', onclick: () => location.hash = '#/footprint' }, '账本', icon('right'))),
+          h('div', { class: 'qbtns' },
+            h('button', { class: 'qbtn', onclick: quickLedgerDialog },
+              h('span', { class: 'qb-ic', style: 'background:#C96868' }),
+              h('span', { class: 'qb-t' }, '支出')),
+            h('button', { class: 'qbtn', onclick: quickLedgerDialog },
+              h('span', { class: 'qb-ic', style: 'background:#6FA88B' }),
+              h('span', { class: 'qb-t' }, '收入'))),
+          h('div', { class: 'quick-journal' },
+            h('button', { class: 'btn btn-warn btn-sm', style: 'width:100%', onclick: quickLedgerDialog }, icon('ledger'), '记一笔'))),
+        h('div', { class: 'card' },
+          h('div', { class: 'card-title' }, icon('ledger'), '最近账本',
+            h('button', { class: 'more', onclick: () => location.hash = '#/footprint' }, '全部', icon('right'))),
+          h('div', { class: 'empty' }, '点击上方"记一笔"开始记账')),
       );
     } else {
       contentBox.append(

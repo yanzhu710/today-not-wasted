@@ -8,12 +8,37 @@ export function petSVG(petId, { equip = {}, pose = 'idle', stage = 1 } = {}) {
   const def = PETS.find((p) => p.petId === petId) || PETS[0];
   const scale = 0.94 + Math.min(stage, 5) * 0.022;
 
-  // 优先使用正式宠物图片（assets/pets/{petId}.png）
+  // 优先使用正式宠物图片（assets/pets/{petId}.png），同时叠加装扮
   if (window.__PET_IMAGES && window.__PET_IMAGES[petId]) {
+    // 先计算装扮
+    const P = def.palette;
+    const A = {
+      S021: () => `<path d="M42 72c6 4 30 4 36 0l-3 10c-8 3-22 3-30 0z" fill="#7A8FB5"/><path d="M46 74l2 9M54 76l1 9M62 76l-1 9M70 74l-2 9" stroke="#F4F0E6" stroke-width="2.4"/>`,
+      S022: () => `<circle cx="76" cy="32" r="7" fill="#EFC94C"/><path d="M76 26v12M70 30l12 6M82 30l-12 6" stroke="#D9A02C" stroke-width="1.6"/>`,
+      S023: () => `<path d="M42 30c2-10 34-10 36 0l2 6H40z" fill="#8B8FA8"/><ellipse cx="60" cy="37" rx="24" ry="5" fill="#6F7390"/>`,
+      S024: () => `<path d="M42 72c6 4 30 4 36 0l-2 9c-9 3-23 3-32 0z" fill="#5B7EA6"/><path d="M44 74h32M46 78h28" stroke="#F4F0E6" stroke-width="2"/>`,
+      S025: () => `<ellipse cx="62" cy="26" rx="20" ry="11" fill="#B5776B"/><circle cx="62" cy="20" r="3" fill="#8A5B4A"/><ellipse cx="60" cy="31" rx="24" ry="5" fill="#B5776B"/>`,
+      S026: () => `<path d="M34 78c0-18 10-28 26-28s26 10 26 28v14H34z" fill="#E8C84E" opacity="0.92"/><path d="M46 50c2-6 8-9 14-9s12 3 14 9" fill="none" stroke="#D9B02C" stroke-width="3"/>`,
+      S027: () => `<path d="M42 34c2-10 34-10 36 0l6 12H36z" fill="#7A8FB5"/><circle cx="86" cy="48" r="6" fill="#F4F0E6"/><path d="M54 26l6-4 4 5" stroke="#F4F0E6" stroke-width="2" fill="none"/>`,
+      S028: () => `<path d="M42 72c6 4 30 4 36 0l-2 8c-9 4-23 4-32 0z" fill="#C9484E"/><path d="M74 78l10 8-4 10-10-8" fill="#C9484E"/>`,
+      S029: () => `<rect x="72" y="80" width="20" height="16" rx="4" fill="#A67B4E"/><path d="M72 84h20" stroke="#8A6238" stroke-width="2"/><path d="M48 74c8 6 20 8 28 6" fill="none" stroke="#8A6238" stroke-width="3"/>`,
+      S030: () => `<path d="M34 76c2-10 12-14 26-14s24 4 26 14c-8 6-18 8-26 8s-18-2-26-8z" fill="#F4F0E6"/><circle cx="40" cy="74" r="4" fill="#FFF"/><circle cx="80" cy="74" r="4" fill="#FFF"/><circle cx="60" cy="70" r="4" fill="#FFF"/>`,
+      S031: () => `<path d="M44 24l4 10 6-12 6 12 4-10 2 14H42z" fill="#D8A94D"/><circle cx="60" cy="14" r="5" fill="#F2E4BC"/><path d="M60 10a5 5 0 0 0 0 8z" fill="#D8A94D"/>`,
+      S032: () => `<path d="M36 78c2-16 10-24 24-24s22 8 24 24z" fill="#8B6FA8"/><path d="M50 54c3 6 6 8 10 8s7-2 10-8" fill="none" stroke="#D8A94D" stroke-width="2.6"/><circle cx="60" cy="66" r="3" fill="#D8A94D"/>`,
+    };
+    let accBack = '', accFront = '';
+    for (const [slot, key] of [['head', 'S022'], ['head', 'S023'], ['head', 'S025'], ['head', 'S027'], ['head', 'S031'], ['neck', 'S021'], ['neck', 'S024'], ['neck', 'S028'], ['body', 'S026'], ['body', 'S029'], ['body', 'S030'], ['body', 'S032']]) {
+      if (equip[slot] === key && A[key]) {
+        if (['S026', 'S029', 'S030', 'S032'].includes(key)) accBack += A[key]();
+        else accFront += A[key]();
+      }
+    }
     return `<svg class="pet-svg" viewBox="0 0 120 118" style="--pet-scale:${scale.toFixed(3)}" aria-label="${def.name}">
       <g transform="translate(60,104) scale(var(--pet-scale)) translate(-60,-104)">
         <ellipse cx="60" cy="109" rx="24" ry="7" fill="rgba(76,58,40,.12)"/>
+        ${accBack}
         <image href="./assets/pets/${petId}.png" x="10" y="5" width="100" height="105" preserveAspectRatio="xMidYMid meet"/>
+        ${accFront}
       </g>
     </svg>`;
   }
@@ -213,7 +238,7 @@ export function renderHomeScene(container, layout, petRow, { onClickPet = null, 
     spawnAmbient(container, stage || 1);
   }
   const pw = petNode(petRow, { stage });
-  pw.style.cssText = 'position:absolute;left:44%;bottom:6%;width:34%;transform:translateX(-50%);z-index:5';
+  pw.style.cssText = 'position:absolute;left:44%;bottom:4%;width:48%;transform:translateX(-50%);z-index:5';
   if (onClickPet) pw.addEventListener('click', onClickPet);
   container.append(pw);
   // 前景地面家具

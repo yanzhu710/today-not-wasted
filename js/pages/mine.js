@@ -177,7 +177,7 @@ function setRow(label, ctrl) {
 async function editProfile(ctx) {
   const profile = await loadKV('profile');
   const nickInp = h('input', { class: 'input', value: profile.nickname || '', placeholder: '昵称', maxlength: '12' });
-  const avatarEl = h('div', { class: 'avatar-fb', style: 'width:72px;height:72px;font-size:24px;margin:0 auto' }, '换头像');
+  const avatarEl = h('div', { class: 'avatar-fb', style: 'width:72px;height:72px;font-size:12px;margin:0 auto;flex-wrap:wrap;line-height:1.3' }, '换头像');
   if (profile.avatarId) { avatarEl.className = 'avatar'; avatarEl.style.cssText = 'width:72px;height:72px;margin:0 auto;overflow:hidden'; fillAvatar(avatarEl, profile.avatarId); }
   let avatarId = profile.avatarId;
   avatarEl.addEventListener('click', () => {
