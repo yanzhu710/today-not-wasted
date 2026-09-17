@@ -36,95 +36,102 @@ export async function renderToday(view, ctx) {
   const weekDone = new Set(events.map((e) => e.dateKey)).size;
 
   view.innerHTML = '';
-  // 横向滑动容器：每屏占满宽度，左右滑动切换
-  const swipe = h('div', { class: 'today-swipe' });
 
-  // 第1屏：今日概览 + 任务
-  const s1 = h('div', { class: 'today-screen' },
-    h('div', { class: 'card hi-card rise' },
-      h('div', { class: 'hi-date' },
-        h('span', null, new Date().getFullYear() + '年' + (new Date().getMonth() + 1) + '月' + new Date().getDate() + '日 · 周' + '一二三四五六日'[weekdayOf(dk) - 1]),
-        hol ? h('span', { class: 'tag tag-hol' }, hol + ' · 休') : info.makeup ? h('span', { class: 'tag tag-work' }, '调休上班') : null,
-        nh && !hol && nh.start > dk ? h('span', { class: 'tag' }, `距离${nh.name}还有 ${diffDay(dk, nh.start)} 天`) : null),
-      h('div', { class: 'hi-main' }, summary.tasks ? `今日已完成 ${summary.doneTasks}/${summary.tasks} 件` : '今天还没有安排，记一件小事就算数'),
-      h('div', { class: 'hi-sub' }, `今日积分 +${summary.points}/${summary.pointsCap} · 有效记录 ${summary.validEvents} 条`),
-      h('div', { class: 'bar' }, h('i', { style: `width:${Math.min(100, Math.round((summary.points / summary.pointsCap) * 100))}%` }))),
-    taskSection(undone, done, tplById, ctx),
-  );
+  // 顶部 tab 切换
+  let curTab = 'overview';
+  const tabs = [
+    { id: 'overview', name: '概览' },
+    { id: 'habit', name: '习惯' },
+    { id: 'stats', name: '统计' },
+  ];
+  const tabBar = h('div', { class: 'seg', style: 'margin:0 0 12px' },
+    tabs.map((t) => h('button', {
+      class: curTab === t.id ? 'on' : '',
+      onclick: () => { curTab = t.id; sound.play('tap'); renderContent(); },
+    }, t.name)));
 
-  // 第2屏：习惯 + 快捷记录
-  const s2 = h('div', { class: 'today-screen' },
-    h('div', { class: 'card' },
-      h('div', { class: 'card-title' }, icon('task'), '今天要做的习惯',
-        h('button', { class: 'more', onclick: () => location.hash = '#/plan' }, '全部', icon('right'))),
-      habits.length ? (() => {
-        const due = habits.filter((x) => !x.paused && habitDueOn(x, dk));
-        if (!due.length) return h('div', { class: 'empty' }, '今天没有排班习惯，去计划页看看');
-        const strip = h('div', { class: 'habit-strip' });
-        for (const hb of due) {
-          const logId = logByHabit.get(hb.id);
-          strip.append(h('div', { class: 'habit-pill' },
-            h('button', {
-              class: 'checkbtn' + (logId ? ' on' : ''), 'aria-label': hb.name,
+  const contentBox = h('div', { style: 'min-height:200px' });
+
+  function renderContent() {
+    contentBox.innerHTML = '';
+    if (curTab === 'overview') {
+      contentBox.append(
+        h('div', { class: 'card hi-card rise' },
+          h('div', { class: 'hi-date' },
+            h('span', null, new Date().getFullYear() + '年' + (new Date().getMonth() + 1) + '月' + new Date().getDate() + '日 · 周' + '一二三四五六日'[weekdayOf(dk) - 1]),
+            hol ? h('span', { class: 'tag tag-hol' }, hol + ' · 休') : info.makeup ? h('span', { class: 'tag tag-work' }, '调休上班') : null,
+            nh && !hol && nh.start > dk ? h('span', { class: 'tag' }, `距离${nh.name}还有 ${diffDay(dk, nh.start)} 天`) : null),
+          h('div', { class: 'hi-main' }, summary.tasks ? `今日已完成 ${summary.doneTasks}/${summary.tasks} 件` : '今天还没有安排，记一件小事就算数'),
+          h('div', { class: 'hi-sub' }, `今日积分 +${summary.points}/${summary.pointsCap} · 有效记录 ${summary.validEvents} 条`),
+          h('div', { class: 'bar' }, h('i', { style: `width:${Math.min(100, Math.round((summary.points / summary.pointsCap) * 100))}%` }))),
+        taskSection(undone, done, tplById, ctx),
+      );
+    } else if (curTab === 'habit') {
+      contentBox.append(
+        h('div', { class: 'card' },
+          h('div', { class: 'card-title' }, icon('task'), '今天要做的习惯',
+            h('button', { class: 'more', onclick: () => location.hash = '#/plan' }, '全部', icon('right'))),
+          habits.length ? (() => {
+            const due = habits.filter((x) => !x.paused && habitDueOn(x, dk));
+            if (!due.length) return h('div', { class: 'empty' }, '今天没有排班习惯，去计划页看看');
+            const strip = h('div', { class: 'habit-strip' });
+            for (const hb of due) {
+              const logId = logByHabit.get(hb.id);
+              strip.append(h('div', { class: 'habit-pill' },
+                h('button', {
+                  class: 'checkbtn' + (logId ? ' on' : ''), 'aria-label': hb.name,
+                  onclick: async () => {
+                    if (logId) await doHabitUndo(hb, dk); else await doHabitDone(hb, dk);
+                    ctx.rerender();
+                  },
+                }, icon('check')),
+                h('span', null, hb.name)));
+            }
+            return strip;
+          })() : h('div', { class: 'empty' }, '还没有习惯，', h('button', { class: 'act', onclick: () => location.hash = '#/plan' }, '去创建一个'))),
+        h('div', { class: 'card' },
+          h('div', { class: 'card-title' }, icon('quick'), '快捷记录',
+            h('button', { class: 'more', onclick: () => manageQuickButtons(ctx) }, '管理', icon('right'))),
+          h('div', { class: 'qbtns' },
+            quickButtons.map((q) => h('button', {
+              class: 'qbtn',
               onclick: async () => {
-                if (logId) await doHabitUndo(hb, dk); else await doHabitDone(hb, dk);
+                sound.play('tap');
+                const res = await addQuickRecord({ category: q.category, minutes: q.minutes || null, count: q.count || null, title: q.label });
+                queueSettle([{ ic: 'quick', label: q.label, sub: q.minutes ? fmtMin(q.minutes) : catName(q.category), points: res.points }]);
                 ctx.rerender();
               },
-            }, icon('check')),
-            h('span', null, hb.name)));
-        }
-        return strip;
-      })() : h('div', { class: 'empty' }, '还没有习惯，', h('button', { class: 'act', onclick: () => location.hash = '#/plan' }, '去创建一个'))),
+            },
+              h('span', { class: 'qb-ic', style: `background:${catColor(q.category)}` }),
+              h('span', { class: 'qb-t' }, q.label),
+              h('span', { class: 'qb-s' }, q.minutes ? fmtMin(q.minutes) : q.count ? `×${q.count}` : catName(q.category))))),
+          h('div', { class: 'quick-journal' },
+            h('button', { class: 'btn btn-soft btn-sm', style: 'flex:1', onclick: quickRecordDialog }, icon('quick'), '记一件完成的事'),
+            h('button', { class: 'btn btn-warn btn-sm', style: 'flex:1', onclick: quickLedgerDialog }, icon('ledger'), '快速记账'))),
+      );
+    } else {
+      contentBox.append(
+        h('div', { class: 'stat-row' },
+          h('button', { class: 'stat-cell', style: 'cursor:pointer', onclick: () => openFocus() },
+            h('div', { class: 'v', style: 'color:var(--primary-deep)' }, icon('focus')), h('div', { class: 'k' }, '开始专注')),
+          h('div', { class: 'stat-cell' }, h('div', { class: 'v num' }, String(weekDone)), h('div', { class: 'k' }, '本周有效天数')),
+          h('button', { class: 'stat-cell', style: 'cursor:pointer', onclick: () => location.hash = '#/footprint' },
+            h('div', { class: 'v num', style: 'color:var(--reward)' }, String(balance())), h('div', { class: 'k' }, '积分余额'))),
+        h('div', { class: 'card' },
+          h('div', { class: 'card-title' }, icon('badge'), '最近解锁的徽章',
+            h('button', { class: 'more', onclick: () => location.hash = '#/home' }, '收藏册', icon('right'))),
+          badgeRows.length ? h('div', { class: 'badge-mini-strip' },
+            badgeRows.sort((a, b) => b.ts - a.ts).slice(0, 3).map((r) => {
+              const b = BADGES.find((x) => x.id === r.badgeId);
+              if (!b) return null;
+              return h('div', { class: 'badge-mini' }, h('img', { 'data-badge': b.id, alt: b.name }), h('div', { style: 'min-width:0' }, h('div', { class: 't' }, b.name), h('div', { class: 's' }, b.series)));
+            })) : h('div', { class: 'empty' }, '完成第一件事，解锁第一枚徽章')),
+      );
+    }
+  }
 
-    h('div', { class: 'card' },
-      h('div', { class: 'card-title' }, icon('quick'), '快捷记录',
-        h('button', { class: 'more', onclick: () => manageQuickButtons(ctx) }, '管理', icon('right'))),
-      h('div', { class: 'qbtns' },
-        quickButtons.map((q) => h('button', {
-          class: 'qbtn',
-          onclick: async () => {
-            sound.play('tap');
-            const res = await addQuickRecord({ category: q.category, minutes: q.minutes || null, count: q.count || null, title: q.label });
-            queueSettle([{ ic: 'quick', label: q.label, sub: q.minutes ? fmtMin(q.minutes) : catName(q.category), points: res.points }]);
-            ctx.rerender();
-          },
-        },
-          h('span', { class: 'qb-ic', style: `background:${catColor(q.category)}` }),
-          h('span', { class: 'qb-t' }, q.label),
-          h('span', { class: 'qb-s' }, q.minutes ? fmtMin(q.minutes) : q.count ? `×${q.count}` : catName(q.category))))),
-      h('div', { class: 'quick-journal' },
-        h('button', { class: 'btn btn-soft btn-sm', style: 'flex:1', onclick: quickRecordDialog }, icon('quick'), '记一件完成的事'),
-        h('button', { class: 'btn btn-warn btn-sm', style: 'flex:1', onclick: quickLedgerDialog }, icon('ledger'), '快速记账'))),
-  );
-
-  // 第3屏：统计 + 徽章
-  const s3 = h('div', { class: 'today-screen' },
-    h('div', { class: 'stat-row' },
-      h('button', { class: 'stat-cell', style: 'cursor:pointer', onclick: () => openFocus() },
-        h('div', { class: 'v', style: 'color:var(--primary-deep)' }, icon('focus')), h('div', { class: 'k' }, '开始专注')),
-      h('div', { class: 'stat-cell' }, h('div', { class: 'v num' }, String(weekDone)), h('div', { class: 'k' }, '本周有效天数')),
-      h('button', { class: 'stat-cell', style: 'cursor:pointer', onclick: () => location.hash = '#/footprint' },
-        h('div', { class: 'v num', style: 'color:var(--reward)' }, String(balance())), h('div', { class: 'k' }, '积分余额'))),
-
-    h('div', { class: 'card' },
-      h('div', { class: 'card-title' }, icon('badge'), '最近解锁的徽章',
-        h('button', { class: 'more', onclick: () => location.hash = '#/home' }, '收藏册', icon('right'))),
-      badgeRows.length ? h('div', { class: 'badge-mini-strip' },
-        badgeRows.sort((a, b) => b.ts - a.ts).slice(0, 3).map((r) => {
-          const b = BADGES.find((x) => x.id === r.badgeId);
-          if (!b) return null;
-          return h('div', { class: 'badge-mini' }, h('img', { 'data-badge': b.id, alt: b.name }), h('div', { style: 'min-width:0' }, h('div', { class: 't' }, b.name), h('div', { class: 's' }, b.series)));
-        })) : h('div', { class: 'empty' }, '完成第一件事，解锁第一枚徽章')),
-);
-
-  swipe.append(s1, s2, s3);
-  const dots = h('div', { class: 'swipe-dots' },
-    h('i', { class: 'on' }), h('i', null), h('i', null));
-  swipe.addEventListener('scroll', () => {
-    const idx = Math.round(swipe.scrollLeft / swipe.clientWidth);
-    [...dots.children].forEach((d, i) => d.classList.toggle('on', i === idx));
-  });
-  view.append(swipe, dots);
+  view.append(tabBar, contentBox);
+  renderContent();
   fillBadgeImgs(view);
 }
 
