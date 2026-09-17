@@ -1,5 +1,5 @@
 // 今天没白过 · Service Worker（App Shell 预缓存 + 运行时缓存；更新由用户确认后再刷新）
-const VERSION = 'tjmbg-v1.7.0';
+const VERSION = 'tjmbg-v1.7.1';
 const PRECACHE = [
   './',
   './index.html',
@@ -61,7 +61,18 @@ self.addEventListener('fetch', (e) => {
     );
     return;
   }
-  // 静态资源：缓存优先，未命中走网络（失败则由页面自行降级）
+  // JS / CSS：网络优先，确保更新后拿到最新代码；离线回退缓存
+  if (req.destination === 'script' || req.destination === 'style' || req.url.endsWith('.js') || req.url.endsWith('.css')) {
+    e.respondWith(
+      fetch(req).then((res) => {
+        const copy = res.clone();
+        caches.open(VERSION).then((c) => c.put(req, copy));
+        return res;
+      }).catch(() => caches.match(req))
+    );
+    return;
+  }
+  // 其他静态资源：缓存优先
   e.respondWith(
     caches.match(req).then((hit) => hit || fetch(req).then((res) => {
       if (res.ok) {
