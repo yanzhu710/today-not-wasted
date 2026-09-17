@@ -125,15 +125,15 @@
 .scene-front { z-index: 6; }
 .pet-wrap { position: absolute; z-index: 5; }
 .pet-svg { width: 100%; display: block; }
-.pet-act-idle .pet-svg { animation: petBreathe 3.2s ease-in-out infinite; transform-origin: 50% 92%; }
-.pet-act-touch .pet-svg { animation: petSquish 0.55s ease; }
-.pet-act-eat .pet-svg { animation: petMunch 0.5s ease 3; }
-.pet-act-play .pet-svg { animation: petBounce 0.45s ease 4; transform-origin: 50% 92%; }
-.pet-act-sleep .pet-svg { animation: petBreathe 4.5s ease-in-out infinite; }
-@keyframes petBreathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.025, 0.985); } }
-@keyframes petSquish { 0% { transform: scale(1); } 35% { transform: scale(1.06, 0.92); } 70% { transform: scale(0.97, 1.04); } 100% { transform: scale(1); } }
-@keyframes petMunch { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(2px) scale(1.01, 0.98); } }
-@keyframes petBounce { 0%, 100% { transform: translateY(0); } 45% { transform: translateY(-9px); } }
+.pet-act-idle .pet-svg { animation: petBreathe 3.5s ease-in-out infinite; transform-origin: 50% 92%; }
+.pet-act-touch .pet-svg { animation: petSquish 0.6s ease; }
+.pet-act-eat .pet-svg { animation: petMunch 0.45s ease 3; }
+.pet-act-play .pet-svg { animation: petBounce 0.5s ease 4; transform-origin: 50% 92%; }
+.pet-act-sleep .pet-svg { animation: petBreathe 5s ease-in-out infinite; }
+@keyframes petBreathe { 0%, 100% { transform: scale(1) translateY(0); } 50% { transform: scale(1.035, 0.97) translateY(-1px); } }
+@keyframes petSquish { 0% { transform: scale(1) translateY(0); } 30% { transform: scale(1.08, 0.88) translateY(2px); } 60% { transform: scale(0.95, 1.06) translateY(-2px); } 100% { transform: scale(1) translateY(0); } }
+@keyframes petMunch { 0%, 100% { transform: translateY(0) rotate(0deg); } 25% { transform: translateY(2px) rotate(-2deg); } 75% { transform: translateY(1px) rotate(2deg); } }
+@keyframes petBounce { 0%, 100% { transform: translateY(0) scale(1); } 30% { transform: translateY(-14px) scale(1.02, 0.98); } 60% { transform: translateY(0) scale(0.96, 1.04); } }
 .float-mark { position: absolute; z-index: 9; animation: floatUp 1.3s ease-out forwards; pointer-events: none; }
 @keyframes floatUp { 0% { opacity: 0; transform: translateY(0) scale(0.6); } 18% { opacity: 1; transform: translateY(-12px) scale(1.05); } 100% { opacity: 0; transform: translateY(-56px) translateX(var(--fdx, 0)) scale(0.9); } }
 .pet-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }

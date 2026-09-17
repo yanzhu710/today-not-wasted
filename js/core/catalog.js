@@ -281,8 +281,7 @@ export function badgeRarity(points) {
 // unlock: null=默认可购 / {stage:N} 宠物阶段 / {badges:N} 徽章数 / {series:true} 完成任一系列
 function Sg(id, cat, name, price, type, unlock, desc) { return { id, cat, name, price, type, unlock: unlock || null, desc }; }
 export const SHOP_CATS = [
-  { id: 'food', name: '食物' }, { id: 'toy', name: '玩具' }, { id: 'outfit', name: '装扮' },
-  { id: 'furniture', name: '家具' }, { id: 'bg', name: '背景' }, { id: 'display', name: '展示' },
+  { id: 'food', name: '食物' }, { id: 'toy', name: '玩具' },
 ];
 export const SHOP = [
   Sg('S001', 'food', '小鱼饼干', 25, 'consumable', null, '香香脆脆，团团的最爱。'),

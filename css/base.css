@@ -192,7 +192,7 @@ textarea.input { resize: vertical; line-height: 1.55; }
 .num { font-variant-numeric: tabular-nums; }
 
 /* Toast */
-#fx-root { position: fixed; inset: 0; pointer-events: none; z-index: 900; }
+#fx-root { position: fixed; inset: 0; pointer-events: none; z-index: 999; }
 #fx-root > * { pointer-events: auto; }
 .toast {
   position: absolute; top: calc(var(--sat) + 14px); left: 50%; transform: translate(-50%, -12px);

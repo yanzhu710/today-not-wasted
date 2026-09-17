@@ -105,7 +105,11 @@ async function renderHomeTab(box, ctx) {
   const actions = h('div', { class: 'pet-actions' },
     actBtn('touch', '摸摸', 'heart', touchPet),
     actBtn('feed', '喂食', 'gift', feedPet),
-    actBtn('play', '玩耍', 'pet', playPet));
+    actBtn('play', '玩耍', 'pet', playPet),
+    actBtn('name', '改名', 'edit', async () => {
+      const v = await formDlg({ title: '给伙伴起名 / 改名', fields: [{ key: 'n', label: '名字（12字内）', type: 'text', value: active.name || def.name }] });
+      if (v && v.n.trim()) { await savePetName(active, v.n); toast('已保存'); ctx.rerender(); }
+    }));
 
   function actBtn(_k, label, ic, fn) {
     return h('button', { class: 'btn btn-soft', onclick: fn }, icon(ic), label);

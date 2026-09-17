@@ -238,7 +238,7 @@ export function renderHomeScene(container, layout, petRow, { onClickPet = null, 
     spawnAmbient(container, stage || 1);
   }
   const pw = petNode(petRow, { stage });
-  pw.style.cssText = 'position:absolute;left:44%;bottom:4%;width:48%;transform:translateX(-50%);z-index:5';
+  pw.style.cssText = 'position:absolute;left:50%;bottom:6%;width:62%;transform:translateX(-50%);z-index:5';
   if (onClickPet) pw.addEventListener('click', onClickPet);
   container.append(pw);
   // 前景地面家具
