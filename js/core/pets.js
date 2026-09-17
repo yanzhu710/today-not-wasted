@@ -6,9 +6,20 @@ import { h } from './util.js';
 // 三只宠物：同一结构（身体/耳朵/脸/尾巴），不同几何与配色
 export function petSVG(petId, { equip = {}, pose = 'idle', stage = 1 } = {}) {
   const def = PETS.find((p) => p.petId === petId) || PETS[0];
+  const scale = 0.94 + Math.min(stage, 5) * 0.022;
+
+  // 优先使用正式宠物图片（assets/pets/{petId}.png）
+  if (window.__PET_IMAGES && window.__PET_IMAGES[petId]) {
+    return `<svg class="pet-svg" viewBox="0 0 120 118" style="--pet-scale:${scale.toFixed(3)}" aria-label="${def.name}">
+      <g transform="translate(60,104) scale(var(--pet-scale)) translate(-60,-104)">
+        <ellipse cx="60" cy="109" rx="24" ry="7" fill="rgba(76,58,40,.12)"/>
+        <image href="./assets/pets/${petId}.png" x="10" y="5" width="100" height="105" preserveAspectRatio="xMidYMid meet"/>
+      </g>
+    </svg>`;
+  }
+
   const P = def.palette;
   const ink = P.ink;
-  const scale = 0.94 + Math.min(stage, 5) * 0.022;
   let parts = '';
   let accBack = '', accFront = '';
 

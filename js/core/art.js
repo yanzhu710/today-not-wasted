@@ -112,6 +112,11 @@ export async function initArt() {
     const j = await r.json();
     _overrides = new Set(j.files || []);
   } catch { _overrides = new Set(); }
+  // 标记哪些宠物有正式图片
+  window.__PET_IMAGES = {};
+  for (const p of ['maotuan', 'lili', 'mituan']) {
+    if (_overrides.has(`pets/${p}.png`)) window.__PET_IMAGES[p] = true;
+  }
   _artInit = true;
 }
 const hasFile = (rel) => _artInit && _overrides.has(rel);
