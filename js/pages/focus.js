@@ -12,7 +12,7 @@ function elapsedOf(s) { return s.paused ? s.accumMs : s.accumMs + (Date.now() - 
 export async function openFocus() {
   let s = await loadState();
   const isNew = !s;
-  if (!s) {
+  if (!s || typeof s.startedTs !== 'number' || typeof s.accumMs !== 'number') {
     s = { mode: 'up', targetMin: null, startedTs: Date.now(), paused: false, accumMs: 0, linkType: null, linkId: null, linkCategory: null, linkLabel: '', done: false };
     await setState(s);
   }

@@ -42,7 +42,7 @@ export function renderOnboard(container, onDone) {
     const pwdInp = h('input', { class: 'input', type: 'password', placeholder: '至少4位', maxlength: '32' });
     const pwd2Inp = h('input', { class: 'input', type: 'password', placeholder: '再输入一次' });
     const nickInp = h('input', { class: 'input', placeholder: '界面里怎么称呼你？', value: state.nickname, maxlength: '12' });
-    const avatarImg = h('div', { class: 'avatar-fb', style: 'width:68px;height:68px;font-size:24px' }, '选头像');
+    const avatarImg = h('div', { class: 'avatar-fb', style: 'width:68px;height:68px' }, '选头像');
     const errBox = h('div', { class: 'form-hint', style: 'color:var(--danger);min-height:16px' });
 
     avatarImg.addEventListener('click', async () => {

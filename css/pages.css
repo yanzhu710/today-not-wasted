@@ -33,12 +33,15 @@
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  height: calc(100vh - 56px - 60px - env(safe-area-inset-bottom));
 }
 .today-swipe::-webkit-scrollbar { display: none; }
 .today-screen {
   flex: 0 0 100%;
   scroll-snap-align: start;
-  padding: 0 16px;
+  padding: 0 16px 16px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .swipe-dots {
   display: flex;
