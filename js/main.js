@@ -208,7 +208,7 @@ function registerPWA() {
 }
 
 async function showUpdateModal(worker) {
-  const { openModal } = await import('./core/fx.js');
+  const { openModal, toast } = await import('./core/fx.js');
   const list = h('div', { class: 'update-list' },
     RELEASE_HIGHLIGHTS.map((line) => h('div', { class: 'update-item' },
       h('span', { class: 'update-dot' }),
@@ -231,8 +231,14 @@ async function showUpdateModal(worker) {
         label: '立即更新',
         primary: true,
         onClick: (close) => {
-          worker.postMessage({ type: 'SKIP_WAITING' });
-          navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true });
+          close();
+          toast('正在更新...', { ic: 'refresh', ms: 1500 });
+          let reloaded = false;
+          const doReload = () => { if (!reloaded) { reloaded = true; location.reload(); } };
+          navigator.serviceWorker.addEventListener('controllerchange', doReload, { once: true });
+          try { worker.postMessage({ type: 'SKIP_WAITING' }); } catch {}
+          // 2秒兜底：如果controllerchange没触发就直接刷新
+          setTimeout(doReload, 2000);
         },
       },
     ],
