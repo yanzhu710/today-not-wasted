@@ -190,7 +190,7 @@ function globalListeners() {
 function registerPWA() {
   if (!('serviceWorker' in navigator)) return;
   if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') return;
-  navigator.serviceWorker.register('./sw.js').then((reg) => {
+  navigator.serviceWorker.register('./sw.js?v=' + APP_VERSION).then((reg) => {
     // 已有 waiting worker（上次点了"稍后更新"），直接提示
     if (reg.waiting && navigator.serviceWorker.controller) {
       setTimeout(() => showUpdateModal(reg.waiting), 800);

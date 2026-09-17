@@ -1,5 +1,5 @@
 export const APP_NAME = '今天没白过';
-export const APP_VERSION = '1.9.2';
+export const APP_VERSION = '1.9.3';
 export const APP_AUTHOR = 'yanzhu';
 export const RELEASE_HIGHLIGHTS = [
   '120个徽章全部重新设计为3D珐琅风格。',
