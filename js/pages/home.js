@@ -105,8 +105,7 @@ async function renderHomeTab(box, ctx) {
   const actions = h('div', { class: 'pet-actions' },
     actBtn('touch', '摸摸', 'heart', touchPet),
     actBtn('feed', '喂食', 'gift', feedPet),
-    actBtn('play', '玩耍', 'pet', playPet),
-    actBtn('dress', '装扮', 'star', dressPet));
+    actBtn('play', '玩耍', 'pet', playPet));
 
   function actBtn(_k, label, ic, fn) {
     return h('button', { class: 'btn btn-soft', onclick: fn }, icon(ic), label);

@@ -55,6 +55,8 @@ export async function renderToday(view, ctx) {
 
   function renderContent() {
     contentBox.innerHTML = '';
+    // 更新tab高亮
+    [...tabBar.children].forEach((btn, i) => btn.classList.toggle('on', tabs[i].id === curTab));
     if (curTab === 'overview') {
       contentBox.append(
         h('div', { class: 'card hi-card rise' },

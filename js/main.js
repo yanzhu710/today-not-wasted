@@ -252,28 +252,28 @@ export async function checkForUpdate() {
   if (!('serviceWorker' in navigator)) { fx.toast('当前浏览器不支持更新', { ic: 'star' }); return; }
   try {
     // 显示检查中弹窗
-    const { openModal, closeModal } = await import('./core/fx.js');
+    const { openModal } = await import('./core/fx.js');
     const progBox = h('div', { style: 'text-align:center;padding:16px 0' },
       h('div', { style: 'font-size:14px;color:var(--muted);margin-bottom:12px' }, '正在检查更新...'),
       h('div', { style: 'width:100%;height:6px;background:var(--line);border-radius:3px;overflow:hidden' },
         h('div', { id: 'update-prog', style: 'height:100%;width:0%;background:var(--primary);border-radius:3px;transition:width .3s' }))
     );
-    openModal({ title: '检查更新', content: progBox, actions: [] });
+    const upModal = openModal({ title: '检查更新', content: progBox, actions: [] });
     // 模拟进度
     const prog = document.getElementById('update-prog');
     let p = 0;
     const timer = setInterval(() => { p = Math.min(p + Math.random() * 25, 85); if (prog) prog.style.width = p + '%'; }, 200);
 
     const reg = await navigator.serviceWorker.getRegistration();
-    if (!reg) { clearInterval(timer); closeModal(); fx.toast('正在初始化，请稍后再试', { ic: 'star' }); return; }
+    if (!reg) { clearInterval(timer); upModal.close(); fx.toast('正在初始化，请稍后再试', { ic: 'star' }); return; }
     // 已有 waiting worker
     if (reg.waiting) {
-      clearInterval(timer); closeModal();
+      clearInterval(timer); upModal.close();
       showUpdateModal(reg.waiting); return;
     }
     // 手动检查更新
     await reg.update();
-    clearInterval(timer); closeModal();
+    clearInterval(timer); upModal.close();
     if (reg.waiting) { showUpdateModal(reg.waiting); return; }
     fx.toast('已是最新版本', { ic: 'check' });
   } catch {

@@ -259,7 +259,7 @@ textarea.input { resize: vertical; line-height: 1.55; }
 .badge-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .badge-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .badge-imgbox { width: 72px; height: 72px; border-radius: 18px; overflow: hidden; background: var(--surface2); border: 1px solid var(--line); flex: none; }
-.badge-imgbox img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.badge-imgbox img { width: 100%; height: 100%; display: block; object-fit: contain; mix-blend-mode: multiply; }
 .badge-imgbox.locked img { filter: grayscale(1) opacity(0.35); }
 .badge-cell .nm { font-size: 11px; color: var(--muted); max-width: 76px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .badge-cell.got .nm { color: var(--text); font-weight: 600; }
@@ -421,10 +421,10 @@ body::before {
   border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
   box-shadow: 0 20px 48px rgba(40, 34, 24, 0.18);
 }
-.confetti-mini { width: 8px; height: 10px; border-radius: 3px; animation: confettiBurst .95s cubic-bezier(.2,.8,.25,1) forwards; box-shadow: 0 1px 0 rgba(255,255,255,.28) inset; pointer-events: none; }
+.confetti-mini { width: 8px; height: 10px; border-radius: 3px; animation: confettiBurst .95s cubic-bezier(.2,.8,.25,1) forwards; box-shadow: 0 1px 0 rgba(255,255,255,.28) inset; pointer-events: none; z-index: 99999; }
 .confetti-dot { border-radius: 999px; }
 .confetti-ribbon { border-radius: 2px; }
-.sparkle-burst { position: absolute; transform: translate(-50%, -50%); pointer-events: none; animation: sparkleBurst .85s cubic-bezier(.2,.8,.25,1) forwards; filter: drop-shadow(0 2px 4px rgba(255,244,214,.32)); }
+.sparkle-burst { position: absolute; transform: translate(-50%, -50%); pointer-events: none; animation: sparkleBurst .85s cubic-bezier(.2,.8,.25,1) forwards; filter: drop-shadow(0 2px 4px rgba(255,244,214,.32)); z-index: 99999; }
 @keyframes confettiBurst {
   0% { transform: translate(-50%, -50%) scale(.4) rotate(0deg); opacity: 1; }
   100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1) rotate(var(--rot)); opacity: 0; }

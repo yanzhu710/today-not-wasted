@@ -139,7 +139,11 @@ export function formDlg({ title, fields, submitLabel = '保存', extra = null })
         let inp;
         if (f.type === 'select') {
           inp = h('select', { class: 'input' },
-            (f.options || []).map((o) => h('option', { value: o.value, selected: o.value === f.value }, o.label)));
+            (f.options || []).map((o) => {
+              const val = Array.isArray(o) ? o[0] : o.value;
+              const lab = Array.isArray(o) ? o[1] : o.label;
+              return h('option', { value: val, selected: val === f.value }, lab);
+            }));
         } else if (f.type === 'textarea') {
           inp = h('textarea', { class: 'input', rows: f.rows || 3, placeholder: f.placeholder || '', value: f.value ?? '' });
         } else if (f.type === 'range') {
