@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#F7F3EA">
+<meta name="description" content="今天没白过——把普通日子变成看得见的成就。免费、本地的游戏化生活管理工具。制作人：yanzhu">
+<meta name="color-scheme" content="light dark">
+<meta property="og:title" content="今天没白过">
+<meta property="og:description" content="把普通日子变成看得见的成就。免费、本地的游戏化生活管理工具。">
+<title>今天没白过</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="今天没白过">
+<style>
+#boot-guard{position:fixed;inset:0;z-index:1000;display:grid;place-content:center;gap:14px;padding:30px;background:#f6f1e6;color:#354b40;text-align:center;font:16px/1.6 system-ui,sans-serif}
+#boot-guard[hidden],#boot-actions[hidden]{display:none!important}#boot-guard h1{font-size:26px;margin:0}#boot-detail{max-width:480px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;color:#657268}#boot-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}#boot-actions button{border:1px solid #5c7867;padding:12px 18px;border-radius:24px;font:inherit;background:#fffaf0;color:#354b40}#boot-actions button:disabled{opacity:.5}
+</style>
+</head>
+<body>
+<div id="boot-guard" role="status" aria-live="polite"><h1>今天没白过</h1><p id="boot-label">正在打开今天…</p><p id="boot-detail">把小日子，过成喜欢的样子。</p><div id="boot-actions" hidden><button id="boot-retry" type="button">重新打开</button><button id="boot-check" type="button">检查程序更新</button></div></div>
+<div id="app"></div>
+<div id="fx-root"></div>
+<noscript>「今天没白过」需要启用 JavaScript 才能使用。</noscript>
+<script>
+/* Independent from the module graph: report errors even when an import cannot load. */
+(function () {
+  'use strict';
+  var done = false, stage = '正在读取程序', timer;
+  var box = document.getElementById('boot-guard');
+  var label = document.getElementById('boot-label');
+  var detail = document.getElementById('boot-detail');
+  var actions = document.getElementById('boot-actions');
+  function fail(error) {
+    if (done) return;
+    clearTimeout(timer); box.hidden = false;
+    label.textContent = '打开暂时没有完成';
+    detail.textContent = stage + '：' + (error && error.message ? error.message : String(error || '未知错误')) + '\n已保存的本机记录不会被清空。可以重试，或把这段错误信息发给开发者。';
+    actions.hidden = false;
+  }
+  window.__tjmbgBoot = {
+    step: function (message) { stage = message; label.textContent = message; },
+    ready: function () { done = true; clearTimeout(timer); box.hidden = true; document.documentElement.dataset.boot = 'ready'; },
+    fail: fail
+  };
+  document.getElementById('boot-retry').onclick = function () { location.reload(); };
+  document.getElementById('boot-check').onclick = async function () {
+    var button = this; button.disabled = true;
+    try {
+      if (!('serviceWorker' in navigator)) throw new Error('当前环境不支持离线程序更新，请联网后重新打开。');
+      var scope = new URL('./', location.href).href;
+      var reg = await navigator.serviceWorker.getRegistration(scope);
+      if (!reg || reg.scope !== scope) throw new Error('没有找到本应用的离线程序，请联网后重试。');
+      detail.textContent = '正在检查程序更新，不会删除任何本机记录。';
+      await reg.update();
+      if (reg.installing) {
+        await new Promise(function(resolve, reject) {
+          var worker = reg.installing;
+          var timeout = setTimeout(function(){worker.removeEventListener('statechange', check);reject(new Error('程序仍在下载，请稍后再试。'));},15000);
+          function check(){if(['installed','activated','redundant'].indexOf(worker.state)!==-1){clearTimeout(timeout);worker.removeEventListener('statechange',check);resolve();}}
+          worker.addEventListener('statechange',check);check();
+        });
+      }
+      if (!reg.waiting) { detail.textContent = '没有已就绪的新版。请联网重试，或将上面的错误反馈给开发者。不要删除网站数据。'; return; }
+      await new Promise(function(resolve,reject){
+        var timeout=setTimeout(function(){navigator.serviceWorker.removeEventListener('controllerchange',change);reject(new Error('切换尚未完成，请稍后重试。'));},15000);
+        function change(){clearTimeout(timeout);resolve();location.reload();}
+        navigator.serviceWorker.addEventListener('controllerchange',change,{once:true});
+        reg.waiting.postMessage({type:'SKIP_WAITING'});
+      });
+    } catch(error) { detail.textContent = error.message || String(error); }
+    finally { button.disabled = false; }
+  };
+  window.addEventListener('error', function(event) { if (!done && event.error) fail(event.error); });
+  window.addEventListener('unhandledrejection', function(event) { if (!done) fail(event.reason); });
+  timer = setTimeout(function () { fail(new Error('等待超过 12 秒。若本机存储被其他标签占用，请关闭其他标签后重试。')); }, 12000);
+}());
+</script>
+<!-- Start the recovery watchdog before any external stylesheet can delay modules. -->
+<link rel="stylesheet" href="./css/base.css">
+<link rel="stylesheet" href="./css/pages.css">
+<link rel="stylesheet" href="./css/repair.css">
+<link rel="stylesheet" href="./css/journal-ui.css">
+<script type="module">
+import('./js/main.js').catch(function(error){ window.__tjmbgBoot.fail(error); });
+</script>
+
+</body>
+</html>
