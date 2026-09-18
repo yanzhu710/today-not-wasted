@@ -149,4 +149,3 @@ function icon2(name) {
   return el;
 }
 
-}
