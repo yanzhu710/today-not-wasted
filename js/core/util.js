@@ -10,13 +10,33 @@ export function uid(prefix = 'id') {
 
 // ---- DOM 助手 ----
 export function h(tag, attrs = null, ...children) {
-  const el = document.createElement(tag);
+  const svgTags = new Set(['svg','g','path','circle','ellipse','line','polyline','polygon','rect','text','tspan','defs','linearGradient','radialGradient','stop','clipPath','use','image']);
+  const el = svgTags.has(tag) ? document.createElementNS('http://www.w3.org/2000/svg', tag) : document.createElement(tag);
   if (attrs) for (const [k, v] of Object.entries(attrs)) {
     if (v == null || v === false) continue;
-    if (k === 'class') el.className = v;
+    if (k === 'class') el.setAttribute('class', v);
     else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
     else if (k === 'dataset') Object.assign(el.dataset, v);
-    else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
+    else if (k.startsWith('on') && typeof v === 'function') {
+      if (k === 'onclick') {
+        let busy = false;
+        el.addEventListener('click', event => {
+          if (busy || el.disabled) return;
+          try {
+            const result = v(event);
+            if (result && typeof result.then === 'function') {
+              busy = true;
+              Promise.resolve(result).catch(error => {
+                console.error(error); window.dispatchEvent(new CustomEvent('tjmbg:action-error', {detail:error?.message || '操作失败，请重试'}));
+              }).finally(() => { setTimeout(() => { busy = false; }, 250); });
+            }
+          } catch (error) {
+            console.error(error); window.dispatchEvent(new CustomEvent('tjmbg:action-error', {detail:error?.message || '操作失败，请重试'}));
+          }
+        });
+      } else el.addEventListener(k.slice(2), v);
+    }
+    else if (k === 'innerHTML') el.innerHTML = v;
     else if (k === 'value') el.value = v;
     else if (k === 'checked') el.checked = !!v;
     else if (k === 'disabled' || k === 'selected' || k === 'multiple') el[k] = !!v;

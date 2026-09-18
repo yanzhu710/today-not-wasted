@@ -4,6 +4,7 @@ import { PETS, POINTS } from '../core/catalog.js';
 import { finishOnboard } from '../core/engine.js';
 import { h, uid, qs, icon } from '../core/util.js';
 import { petSVG } from '../core/pets.js';
+import { cropAndSave, fillAvatar } from '../core/avatar.js';
 import { formDlg, toast, queueSettle } from '../core/fx.js';
 import * as sound from '../core/sound.js';
 
@@ -149,56 +150,7 @@ function icon2(name) {
 }
 
 // 头像：选择 → 简单裁剪（拖动+缩放）→ 压缩保存（「我的」页也复用）
-export async function cropAndSave(file) {
-  const img = await new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const im = new Image();
-    im.onload = () => { resolve(im); };
-    im.onerror = reject;
-    im.src = url;
-  });
-  let scale = 1, ox = 0, oy = 0, dragging = false, lx = 0, ly = 0;
-  const size = 240;
-  const canvas = h('canvas', { width: size, height: size, style: 'width:240px;height:240px;border-radius:50%;display:block;margin:0 auto;touch-action:none;background:#EEE' });
-  const ctx = canvas.getContext('2d');
-  const slider = h('input', { class: 'input range', type: 'range', min: '60', max: '300', value: '100', style: 'margin-top:10px' });
-  function draw() {
-    const base = Math.max(size / img.width, size / img.height) * (scale / 1);
-    ctx.clearRect(0, 0, size, size);
-    ctx.save();
-    ctx.beginPath(); ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2); ctx.clip();
-    ctx.fillStyle = '#EEE'; ctx.fillRect(0, 0, size, size);
-    const w = img.width * base, hh = img.height * base;
-    ctx.drawImage(img, (size - w) / 2 + ox, (size - hh) / 2 + oy, w, hh);
-    ctx.restore();
-  }
-  canvas.addEventListener('pointerdown', (e) => { dragging = true; lx = e.clientX; ly = e.clientY; canvas.setPointerCapture(e.pointerId); });
-  canvas.addEventListener('pointermove', (e) => { if (!dragging) return; ox += e.clientX - lx; oy += e.clientY - ly; lx = e.clientX; ly = e.clientY; draw(); });
-  canvas.addEventListener('pointerup', () => { dragging = false; });
-  slider.addEventListener('input', () => { scale = Number(slider.value) / 100; draw(); });
-  draw();
-  const { openModal } = await import('../core/fx.js');
-  return new Promise((resolve) => {
-    let done = false;
-    const m = openModal({
-      title: '调整头像',
-      content: h('div', null, canvas, slider, h('div', { class: 'form-hint', style: 'text-align:center;margin-top:8px' }, '拖动图片调整位置，滑动调整大小')),
-      actions: [
-        { label: '取消', onClick: (c) => { done = true; c(); resolve(null); } },
-        {
-          label: '使用', cls: 'btn-primary', onClick: async (c) => {
-            c(); done = true;
-            const blob = await new Promise((r) => canvas.toBlob((b) => r(b), 'image/jpeg', 0.85));
-            const id = 'avatar_' + uid('m');
-            await put('photos', { id, blob, thumb: blob, role: 'avatar' });
-            resolve(id);
-          },
-        },
-      ],
-      onClose: () => { if (!done) resolve(null); },
-    });
-  });
-}
+export { cropAndSave, fillAvatar, clearAvatarCache } from '../core/avatar.js';
 // 头像URL缓存，避免重复创建ObjectURL
 const _avatarCache = new Map();
 export async function fillAvatar(el, photoId) {

@@ -8,6 +8,9 @@ import { moodArt } from '../core/art.js';
 import { openModal, formDlg, actionSheet, confirmDlg, queueSettle, toast } from '../core/fx.js';
 import { quickLedgerDialog } from './today.js';
 import * as sound from '../core/sound.js';
+import { renderStatsView } from '../core/stats-view.js';
+import { isValidRecord, summarizeRecords, timestampDay } from '../core/record-summary.js';
+import { openSharePanel } from '../core/share.js';
 
 let curTab = 'cal';
 let curMonth = monthKeyOf(todayKey());
@@ -25,7 +28,7 @@ export async function renderFootprint(view, ctx) {
   else if (curTab === 'tl') await renderTimeline(box);
   else if (curTab === 'journal') await renderJournal(box, ctx);
   else if (curTab === 'ledger') await renderLedger(box, ctx);
-  else if (curTab === 'stats') renderStats(box);
+  else if (curTab === 'stats') await renderStats(box);
   else await renderReview(box, ctx);
 }
 
@@ -34,7 +37,7 @@ async function renderCalendar(box, ctx) {
   const [y, m] = curMonth.split('-').map(Number);
   const dk = todayKey();
   const [events, tasks, journal, ledgerRows] = await Promise.all([
-    all('events'), all('tasks'), all('journal'), allByIndex('ledger', 'dateKey', curMonth),
+    all('events'), all('tasks'), all('journal'), all('ledger'),
   ]);
   const evByDate = new Map();
   for (const e of events) { if (!evByDate.has(e.dateKey)) evByDate.set(e.dateKey, []); evByDate.get(e.dateKey).push(e); }
@@ -326,104 +329,7 @@ async function renderLedger(box, ctx) {
 }
 
 // ================= 统计 =================
-function renderStats(box) {
-  const S = stats() || {};
-  const totalEvents = (S.days ? S.days.size : 0);
-  const card = h('div', { class: 'card' },
-    h('div', { class: 'card-title' }, icon('footprint'), '累计统计'),
-    h('div', { class: 'stat-row', style: 'flex-wrap:wrap' },
-      statCell(fmtNum(totalEvents), '有效记录天数'),
-      statCell(fmtNum(S.taskCount || 0), '完成任务'),
-      statCell(fmtMin(S.focusMin || 0), '累计专注'),
-      statCell(String(S.badgeCount || 0) + '/120', '徽章'),
-      statCell(String(S.checklistDone || 0), '完成清单'),
-      statCell(fmtNum(S.goalDone || 0), '达成目标'),
-      statCell(fmtNum(S.ledgerCount || 0), '账目笔数'),
-      statCell(fmtNum(S.petInteractions || 0), '宠物互动')));
-
-  // === 环形分类图 ===
-  const cs = Object.entries(S.catStats || {}).sort((a, b) => b[1].count - a[1].count);
-  const totalCount = cs.reduce((sum, [, v]) => sum + v.count, 0);
-  const donutCard = h('div', { class: 'card' }, h('div', { class: 'card-title' }, '生活分类分布'));
-  if (!cs.length || totalCount === 0) {
-    donutCard.append(h('div', { class: 'empty' }, '记录多了以后，这里会显示你的生活重心'));
-  } else {
-    // SVG donut chart
-    const size = 200, cx = size/2, cy = size/2, r = 70, strokeW = 28;
-    let offset = 0;
-    const circumference = 2 * Math.PI * r;
-    const arcs = cs.map(([c, v]) => {
-      const pct = v.count / totalCount;
-      const dashLen = pct * circumference;
-      const el = h('circle', {
-        cx, cy, r, fill: 'none', stroke: catColor(c), 'stroke-width': strokeW,
-        'stroke-dasharray': `${dashLen} ${circumference - dashLen}`,
-        'stroke-dashoffset': -offset,
-        transform: `rotate(-90 ${cx} ${cy})`,
-        style: 'transition:stroke-dasharray .6s ease,stroke-dashoffset .6s ease',
-      });
-      offset += dashLen;
-      return el;
-    });
-    const svg = h('svg', { width: size, height: size, viewBox: `0 0 ${size} ${size}`, style: 'display:block;margin:0 auto' },
-      h('circle', { cx, cy, r, fill: 'none', stroke: 'var(--surface2)', 'stroke-width': strokeW }),
-      ...arcs,
-      h('text', { x: cx, y: cy - 6, 'text-anchor': 'middle', style: 'font-size:28px;font-weight:800;fill:var(--text)' }, String(totalCount)),
-      h('text', { x: cx, y: cy + 16, 'text-anchor': 'middle', style: 'font-size:12px;fill:var(--muted)' }, '总记录'));
-    donutCard.append(svg);
-    // Legend
-    const legend = h('div', { style: 'display:flex;flex-direction:column;gap:6px;margin-top:12px' });
-    for (const [c, v] of cs) {
-      const pct = Math.round((v.count / totalCount) * 100);
-      legend.append(h('div', { style: 'display:flex;align-items:center;gap:8px;font-size:13px' },
-        h('span', { style: 'width:10px;height:10px;border-radius:3px;background:' + catColor(c) + ';flex:none' }),
-        h('span', { style: 'flex:1' }, catName(c)),
-        h('span', { style: 'color:var(--muted);font-variant-numeric:tabular-nums' }, `${v.count}次 · ${pct}%`)));
-    }
-    donutCard.append(legend);
-  }
-
-  // === 近7天趋势柱状图 ===
-  const today = todayKey();
-  const trendCard = h('div', { class: 'card' }, h('div', { class: 'card-title' }, '近7天记录趋势'));
-  const trendDays = [];
-  for (let i = 6; i >= 0; i--) {
-    const dk = addDaysKey(today, -i);
-    const count = S.dayCounts && S.dayCounts[dk] ? S.dayCounts[dk] : 0;
-    trendDays.push({ dk, count });
-  }
-  const maxCount = Math.max(...trendDays.map(d => d.count), 1);
-  const trendBars = h('div', { style: 'display:flex;align-items:flex-end;gap:8px;height:100px;margin-top:12px;padding:0 4px' });
-  for (const d of trendDays) {
-    const hPct = (d.count / maxCount) * 100;
-    const dayLabel = Number(d.dk.slice(8, 10));
-    trendBars.append(h('div', { style: 'flex:1;display:flex;flex-direction:column;align-items:center;gap:4px' },
-      h('div', { style: 'width:100%;display:flex;align-items:flex-end;height:80px' },
-        h('div', { style: `width:100%;height:${Math.max(hPct, 4)}%;background:var(--primary);border-radius:6px 6px 2px 2px;opacity:0.8` })),
-      h('span', { style: 'font-size:10px;color:var(--muted)' }, dayLabel + '日'),
-      h('span', { style: 'font-size:10px;color:var(--muted)' }, d.count + '条')
-    ));
-  }
-  trendCard.append(trendBars);
-  box.append(trendCard);
-
-  // === 热力格（近30天） ===
-  const heatCard = h('div', { class: 'card' }, h('div', { class: 'card-title' }, '近30天记录热力'));
-  const daysSet = S.days || new Set();
-  const heatGrid = h('div', { style: 'display:grid;grid-template-columns:repeat(10,1fr);gap:4px;margin-top:8px' });
-  for (let i = 29; i >= 0; i--) {
-    const dk = addDaysKey(today, -i);
-    const has = daysSet.has(dk);
-    heatGrid.append(h('div', {
-      style: `aspect-ratio:1;border-radius:4px;background:${has ? 'var(--primary)' : 'var(--surface2)'};opacity:${has ? 0.7 : 0.5}`,
-      title: dk,
-    }));
-  }
-  heatCard.append(heatGrid);
-  heatCard.append(h('div', { style: 'font-size:11px;color:var(--muted);margin-top:8px;text-align:center' }, '深色 = 当天有记录'));
-
-  box.append(card, donutCard, heatCard);
-}
+async function renderStats(box) { return renderStatsView(box); }
 function statCell(v, k) { return h('div', { class: 'stat-cell', style: 'min-width:30%' }, h('div', { class: 'v num' }, v), h('div', { class: 'k' }, k)); }
 
 // ================= 周月回顾 =================

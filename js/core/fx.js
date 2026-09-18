@@ -24,7 +24,7 @@ function pointOf(targetOrPoint) {
   return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
 }
 export function pulse(el, cls = 'tap-pop', ms = 520) {
-  if (!el) return;
+  if (!el || motionLevel() === 'off') return;
   el.classList.remove(cls);
   void el.offsetWidth;
   el.classList.add(cls);
@@ -83,113 +83,125 @@ export function toast(msg, { ic = 'star', ms = 1900 } = {}) {
   setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 260); }, ms);
 }
 
-// ---- 弹窗 ----
+// ---- 弹窗：一次性关闭、可禁用动作、防止提交重入 ----
 let _openStack = [];
 export function openModal({ title = '', content = null, actions = [], onClose = null, noPad = false } = {}) {
+  const previousFocus = document.activeElement;
+  let closed = false, busy = false;
   const back = h('div', { class: 'modal-back' });
-  const card = h('div', { class: 'modal-card' });
-  const head = h('div', { class: 'modal-head' }, h('div', { class: 'modal-title' }, title),
-    h('button', { class: 'modal-x', 'aria-label': '关闭', onclick: () => close() }, icon('close')));
+  const card = h('div', { class: 'modal-card', role: 'dialog', 'aria-modal': 'true', 'aria-label': title });
+  const requestClose = () => { if (!busy) close(); };
+  const x = h('button', { class: 'modal-x', 'aria-label': '关闭', onclick: requestClose }, icon('close'));
+  const head = h('div', { class: 'modal-head' }, h('div', { class: 'modal-title' }, title), x);
   const body = h('div', { class: 'modal-body' + (noPad ? ' nopad' : '') }, content);
-  const foot = actions.length ? h('div', { class: 'modal-foot' },
-    actions.map((a) => h('button', {
-      class: 'btn ' + (a.cls || (a.primary ? 'btn-primary' : 'btn-ghost')),
-      onclick: () => a.onClick ? a.onClick(close) : close(),
-    }, a.label))) : null;
-  card.append(head, body);
-  if (foot) card.append(foot);
-  back.append(card);
-  back.addEventListener('click', (e) => { if (e.target === back) close(); });
-  root().append(back);
-  requestAnimationFrame(() => back.classList.add('show'));
-  function close() {
-    back.classList.remove('show');
-    setTimeout(() => back.remove(), 220);
-    _openStack = _openStack.filter((x) => x !== close);
-    if (onClose) onClose();
+  const actionDefs = actions.filter(Boolean);
+  const buttons = actionDefs.map(a => h('button', {
+    type: 'button', class: 'btn ' + (a.cls || (a.primary ? 'btn-primary' : 'btn-ghost')),
+    disabled: !!a.disabled,
+    onclick: async () => {
+      if (closed || busy || a.disabled) return;
+      setBusy(true);
+      try { if (a.onClick) await a.onClick(close); else close(); }
+      catch (error) { console.error(error); if (!closed) toast(error?.message || '操作失败，请重试', { ic: 'error' }); }
+      finally { if (!closed) setBusy(false); }
+    },
+  }, a.label));
+  function setBusy(value) {
+    busy = value; card.setAttribute('aria-busy', String(value)); x.disabled = value;
+    buttons.forEach((b, i) => { b.disabled = value || !!actionDefs[i].disabled; });
   }
-  _openStack.push(close);
-  return { el: card, body, close };
+  card.append(head, body);
+  if (buttons.length) card.append(h('div', { class: 'modal-foot' }, buttons));
+  back.append(card);
+  back.addEventListener('click', e => { if (e.target === back) requestClose(); });
+  card.addEventListener('keydown', e => {
+    if (e.key !== 'Tab') return;
+    const list = [...card.querySelectorAll('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled),[tabindex="0"]')].filter(n => n.getClientRects().length);
+    if (!list.length) return;
+    const first = list[0], last = list.at(-1);
+    if (e.shiftKey && (document.activeElement === first || !card.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+  root().append(back);
+  requestAnimationFrame(() => { if (!closed) { back.classList.add('show'); x.focus({ preventScroll: true }); } });
+  function close() {
+    if (closed) return;
+    closed = true;
+    back.classList.remove('show'); back.style.pointerEvents = 'none';
+    _openStack = _openStack.filter(fn => fn !== requestClose);
+    setTimeout(() => back.remove(), 220);
+    if (onClose) onClose();
+    if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+  }
+  _openStack.push(requestClose);
+  return { el: card, body, close, get closed() { return closed; } };
 }
-export function closeTopModal() { if (_openStack.length) _openStack[_openStack.length - 1](); }
+export function closeTopModal() { _openStack.at(-1)?.(); }
+export function hasOpenModal() { return _openStack.length > 0; }
 
 export function confirmDlg(title, msg, { okLabel = '确定', cancelLabel = '取消', danger = false } = {}) {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     let done = false;
-    const m = openModal({
-      title,
-      content: h('div', { class: 'confirm-msg' }, msg),
-      actions: [
-        { label: cancelLabel, onClick: (c) => { done = true; c(); resolve(false); } },
-        { label: okLabel, cls: danger ? 'btn-danger' : 'btn-primary', onClick: (c) => { done = true; c(); resolve(true); } },
-      ],
-      onClose: () => { if (!done) resolve(false); },
-    });
-    return m;
+    const finish = (value, close) => { if (done) return; done = true; resolve(value); close(); };
+    openModal({ title, content: h('div', { class: 'confirm-msg' }, msg), actions: [
+      { label: cancelLabel, onClick: c => finish(false, c) },
+      { label: okLabel, cls: danger ? 'btn-danger' : 'btn-primary', onClick: c => finish(true, c) },
+    ], onClose: () => { if (!done) { done = true; resolve(false); } } });
   });
 }
 
-// 表单弹窗：fields = [{key,label,type,value,placeholder,options,min,max,step,required,hint}]
-export function formDlg({ title, fields, submitLabel = '保存', extra = null }) {
-  return new Promise((resolve) => {
+export function formDlg({ title, fields = [], submitLabel = '保存', extra = null }) {
+  return new Promise(resolve => {
     let done = false;
     const inputs = {};
-    const content = h('div', { class: 'form-list' },
-      fields.map((f) => {
-        let inp;
-        if (f.type === 'select') {
-          inp = h('select', { class: 'input' },
-            (f.options || []).map((o) => {
-              const val = Array.isArray(o) ? o[0] : o.value;
-              const lab = Array.isArray(o) ? o[1] : o.label;
-              return h('option', { value: val, selected: val === f.value }, lab);
-            }));
-        } else if (f.type === 'textarea') {
-          inp = h('textarea', { class: 'input', rows: f.rows || 3, placeholder: f.placeholder || '', value: f.value ?? '' });
-        } else if (f.type === 'range') {
-          inp = h('input', { class: 'input range', type: 'range', min: f.min ?? 0, max: f.max ?? 100, step: f.step || 1, value: f.value ?? 0 });
-        } else {
-          inp = h('input', { class: 'input', type: f.type || 'text', placeholder: f.placeholder || '', value: f.value ?? '', inputmode: f.inputmode || null, min: f.min, max: f.max });
+    const content = h('div', { class: 'form-list' }, fields.map(f => {
+      let inp;
+      if (f.type === 'select') {
+        inp = h('select', { class: 'input' }, (f.options || []).map(o => {
+          const val = Array.isArray(o) ? o[0] : o.value;
+          return h('option', { value: val, selected: val === f.value }, Array.isArray(o) ? o[1] : o.label);
+        }));
+      } else if (f.type === 'textarea') {
+        inp = h('textarea', { class: 'input', rows: f.rows || 3, value: f.value ?? '', placeholder: f.placeholder || '' });
+      } else {
+        inp = h('input', { class: 'input' + (f.type === 'range' ? ' range' : ''), type: f.type || 'text',
+          value: f.value ?? '', placeholder: f.placeholder || '', inputmode: f.inputmode,
+          min: f.min, max: f.max, step: f.step, maxlength: f.maxlength });
+      }
+      if (f.required) inp.required = true;
+      inputs[f.key] = inp;
+      return h('label', { class: 'form-item' }, h('span', { class: 'form-label' }, f.label), inp,
+        f.hint ? h('span', { class: 'form-hint' }, f.hint) : null);
+    }), extra);
+    const finish = (value, close) => { if (done) return; done = true; resolve(value); close(); };
+    const m = openModal({ title, content, actions: [
+      { label: '取消', onClick: c => finish(null, c) },
+      { label: submitLabel, cls: 'btn-primary', onClick: c => {
+        // 包括 extra 中的原生输入；验证失败不关闭、不丢失内容。
+        for (const el of content.querySelectorAll('input,select,textarea')) {
+          if (el.reportValidity && !el.reportValidity()) return;
         }
-        inputs[f.key] = inp;
-        return h('label', { class: 'form-item' },
-          h('span', { class: 'form-label' }, f.label),
-          inp,
-          f.hint ? h('span', { class: 'form-hint' }, f.hint) : null);
-      }),
-      extra || null);
-    const m = openModal({
-      title,
-      content,
-      actions: [
-        { label: '取消', onClick: (c) => { done = true; c(); resolve(null); } },
-        {
-          label: submitLabel, cls: 'btn-primary', onClick: (c) => {
-            const out = {};
-            for (const [k, inp] of Object.entries(inputs)) out[k] = inp.value;
-            c(); done = true; resolve(out);
-          },
-        },
-      ],
-      onClose: () => { if (!done) resolve(null); },
-    });
-    setTimeout(() => { const first = Object.values(inputs)[0]; if (first && first.focus) first.focus(); }, 260);
-    return m;
+        const out = Object.fromEntries(Object.entries(inputs).map(([k, inp]) => [k, inp.value]));
+        finish(out, c);
+      } },
+    ], onClose: () => { if (!done) { done = true; resolve(null); } } });
+    setTimeout(() => { if (!m.closed) content.querySelector('input,textarea,select')?.focus(); }, 260);
   });
 }
 
-// 底部操作面板
 export function actionSheet(title, items) {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     let done = false;
-    const content = h('div', { class: 'sheet-list' },
-      items.map((it, i) => h('button', {
-        class: 'sheet-item' + (it.danger ? ' danger' : ''),
-        onclick: () => { cleanup(); if (it.onClick) it.onClick(); resolve(i); },
-      }, icon(it.ic || 'right'), h('span', { class: 'sheet-label' }, it.label), it.sub ? h('span', { class: 'sheet-sub' }, it.sub) : null)));
-    const m = openModal({ title, content, noPad: true, onClose: () => { if (!done) resolve(-1); } });
-    function cleanup() { done = true; m.close(); }
-    return m;
+    const content = h('div', { class: 'sheet-list' }, items.filter(Boolean).map((it, i) => h('button', {
+      class: 'sheet-item' + (it.danger ? ' danger' : ''), disabled: !!it.disabled,
+      onclick: async () => {
+        if (done || it.disabled) return;
+        done = true; m.close(); resolve(i);
+        try { await it.onClick?.(); }
+        catch (e) { console.error(e); toast(e?.message || '操作失败，请重试', { ic: 'error' }); }
+      },
+    }, icon(it.ic || 'right'), h('span', { class: 'sheet-label' }, it.label), it.sub ? h('span', { class: 'sheet-sub' }, it.sub) : null)));
+    const m = openModal({ title, content, noPad: true, onClose: () => { if (!done) { done = true; resolve(-1); } } });
   });
 }
 

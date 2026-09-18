@@ -1,0 +1,24 @@
+/* v2.3.1 功能修复层：保留原手账主题，不覆盖全站配色。 */
+button:disabled { opacity:.5; cursor:not-allowed; }
+.repair-seg { display:flex; gap:6px; flex-wrap:wrap; margin:8px 0 12px; }
+.repair-seg button { border-radius:999px; padding:8px 14px; background:var(--surface2); color:var(--text); }
+.repair-seg button.on { background:var(--primary); color:var(--surface); }
+.repair-range { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
+.repair-share-preview canvas { display:block; width:100%; height:auto; border-radius:14px; box-shadow:0 4px 18px #00000014; }
+.repair-share-controls label { display:inline-flex; align-items:center; gap:5px; margin:4px 12px 4px 0; font-size:13px; }
+.repair-share-preview[aria-busy="true"] { opacity:.55; }
+.repair-share-note { width:100%; margin:10px 0; }
+.repair-stat-svg { width:100%; max-width:300px; height:auto; display:block; margin:auto; }
+.repair-trend { display:flex; gap:4px; align-items:flex-end; min-height:118px; overflow-x:auto; padding:4px 0; }
+.repair-trend button { min-width:28px; flex:1; background:transparent; font-size:10px; color:var(--muted); }
+.repair-trend .plot { display:flex; align-items:flex-end; justify-content:center; height:80px; }
+.repair-trend .bar-item { width:75%; background:var(--primary); border-radius:5px 5px 0 0; }
+.repair-heat { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:5px; }
+.repair-heat button { aspect-ratio:1; border-radius:5px; font-size:11px; padding:2px; color:var(--text); }
+.repair-memories .row-title { white-space:normal; }
+.repair-pet-message { font-size:13px; line-height:1.65; color:var(--primary-deep); margin:8px 0; }
+.repair-avatar { width:36px; height:36px; flex:none; overflow:hidden; border-radius:50%; }
+@media (max-width:360px) { .repair-seg button { padding:7px 11px; } }
+@media (prefers-reduced-motion:reduce) { .repair-share-preview { transition:none; } }
+
+.repair-heat .heat-weekday {text-align:center;font-size:11px;color:var(--muted);padding:4px 0;}
