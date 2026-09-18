@@ -143,7 +143,7 @@ export function petSVG(petId, { equip = {}, pose = 'idle', stage = 1 } = {}) {
       <radialGradient id="pet-cheek-${petId}" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="rgba(255,255,255,.4)"/><stop offset="100%" stop-color="rgba(255,255,255,0)"/></radialGradient>
       <filter id="pet-soft-shadow-${petId}" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="1.8" stdDeviation="1.6" flood-color="rgba(118,88,56,.22)"/></filter>
     </defs>
-    <g transform="translate(60,104) scale(var(--pet-scale)) translate(-60,-104)">${shadow}${aura}${stageSpark}<g filter="url(#pet-soft-shadow-${petId})">${accBack}${parts}${shine}${accFront}</g></g>
+    <g transform="translate(60,104) scale(${scale.toFixed(3)}) translate(-60,-104)">${shadow}${aura}${stageSpark}<g filter="url(#pet-soft-shadow-${petId})">${accBack}${parts}${shine}${accFront}</g></g>
   </svg>`;
 }
 
