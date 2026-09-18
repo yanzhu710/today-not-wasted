@@ -152,49 +152,4 @@ function icon2(name) {
 // 头像：选择 → 简单裁剪（拖动+缩放）→ 压缩保存（「我的」页也复用）
 export { cropAndSave, fillAvatar, clearAvatarCache } from '../core/avatar.js';
 // 头像URL缓存，避免重复创建ObjectURL
-const _avatarCache = new Map();
-export async function fillAvatar(el, photoId) {
-  if (!photoId) return;
-  const { get } = await import('../core/db.js');
-  // 检查缓存
-  let url = _avatarCache.get(photoId);
-  if (!url) {
-    const row = await get('photos', photoId).catch(() => null);
-    if (!row || !row.blob) {
-      // 加载失败，显示默认头像
-      el.innerHTML = '';
-      el.style.borderRadius = '50%';
-      el.style.background = 'var(--surface2)';
-      el.style.display = 'flex';
-      el.style.alignItems = 'center';
-      el.style.justifyContent = 'center';
-      el.style.fontSize = '20px';
-      el.style.color = 'var(--muted)';
-      el.textContent = '友';
-      return;
-    }
-    url = URL.createObjectURL(row.blob);
-    _avatarCache.set(photoId, url);
-  }
-  el.innerHTML = '';
-  el.style.borderRadius = '50%';
-  el.style.overflow = 'hidden';
-  el.style.background = 'var(--surface2)';
-  el.append(h('img', {
-    src: url,
-    style: 'width:100%;height:100%;object-fit:cover;display:block',
-    alt: '头像',
-    onload: () => { el.style.opacity = '1'; },
-    onerror: () => { el.innerHTML = '友'; el.style.fontSize = '20px'; el.style.color = 'var(--muted)'; }
-  }));
-}
-// 清除头像缓存（更换头像后调用）
-export function clearAvatarCache(photoId) {
-  if (photoId && _avatarCache.has(photoId)) {
-    URL.revokeObjectURL(_avatarCache.get(photoId));
-    _avatarCache.delete(photoId);
-  } else if (!photoId) {
-    _avatarCache.forEach((url) => URL.revokeObjectURL(url));
-    _avatarCache.clear();
-  }
 }
