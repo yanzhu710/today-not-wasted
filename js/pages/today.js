@@ -54,7 +54,7 @@ export async function renderToday(view, ctx) {
         stage ? h('span', { class: 'tag' }, stage.name) : null),
       prog ? h('div', { class: 'bar', style: 'margin-top:10px' }, h('i', { style: `width:${Math.round(prog.ratio * 100)}%` })) : null,
       h('div', { style: 'font-size:11.5px;color:var(--muted);margin-top:5px' },
-        prog && prog.next ? `距「${prog.next.name}」还差 ${prog.next.min - (active.growth || 0)}` : '已是最高阶段')
+        prog && prog.next ? `距「${prog.next.name}」还差 ${prog.remain}` : '已是最高阶段')
     );
     petWrap.addEventListener('click', () => {
       sound.play('pet');

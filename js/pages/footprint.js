@@ -340,17 +340,66 @@ function renderStats(box) {
       statCell(fmtNum(S.goalDone || 0), '达成目标'),
       statCell(fmtNum(S.ledgerCount || 0), '账目笔数'),
       statCell(fmtNum(S.petInteractions || 0), '宠物互动')));
-  const catCard = h('div', { class: 'card' }, h('div', { class: 'card-title' }, '生活分类分布'));
+
+  // === 环形分类图 ===
   const cs = Object.entries(S.catStats || {}).sort((a, b) => b[1].count - a[1].count);
-  const maxC = Math.max(1, ...cs.map(([, v]) => v.count));
-  if (!cs.length) catCard.append(h('div', { class: 'empty' }, '记录多了以后，这里会显示你的生活重心'));
-  for (const [c, v] of cs) {
-    catCard.append(h('div', { class: 'cat-bar-row' },
-      h('span', { class: 'cb-label' }, catName(c)),
-      h('div', { class: 'bar' }, h('i', { style: `width:${Math.round((v.count / maxC) * 100)}%;background:${catColor(c)}` })),
-      h('span', { class: 'cb-val num' }, `${v.count} 次`)));
+  const totalCount = cs.reduce((sum, [, v]) => sum + v.count, 0);
+  const donutCard = h('div', { class: 'card' }, h('div', { class: 'card-title' }, '生活分类分布'));
+  if (!cs.length || totalCount === 0) {
+    donutCard.append(h('div', { class: 'empty' }, '记录多了以后，这里会显示你的生活重心'));
+  } else {
+    // SVG donut chart
+    const size = 200, cx = size/2, cy = size/2, r = 70, strokeW = 28;
+    let offset = 0;
+    const circumference = 2 * Math.PI * r;
+    const arcs = cs.map(([c, v]) => {
+      const pct = v.count / totalCount;
+      const dashLen = pct * circumference;
+      const el = h('circle', {
+        cx, cy, r, fill: 'none', stroke: catColor(c), 'stroke-width': strokeW,
+        'stroke-dasharray': `${dashLen} ${circumference - dashLen}`,
+        'stroke-dashoffset': -offset,
+        transform: `rotate(-90 ${cx} ${cy})`,
+        style: 'transition:stroke-dasharray .6s ease,stroke-dashoffset .6s ease',
+      });
+      offset += dashLen;
+      return el;
+    });
+    const svg = h('svg', { width: size, height: size, viewBox: `0 0 ${size} ${size}`, style: 'display:block;margin:0 auto' },
+      h('circle', { cx, cy, r, fill: 'none', stroke: 'var(--surface2)', 'stroke-width': strokeW }),
+      ...arcs,
+      h('text', { x: cx, y: cy - 6, 'text-anchor': 'middle', style: 'font-size:28px;font-weight:800;fill:var(--text)' }, String(totalCount)),
+      h('text', { x: cx, y: cy + 16, 'text-anchor': 'middle', style: 'font-size:12px;fill:var(--muted)' }, '总记录'));
+    donutCard.append(svg);
+    // Legend
+    const legend = h('div', { style: 'display:flex;flex-direction:column;gap:6px;margin-top:12px' });
+    for (const [c, v] of cs) {
+      const pct = Math.round((v.count / totalCount) * 100);
+      legend.append(h('div', { style: 'display:flex;align-items:center;gap:8px;font-size:13px' },
+        h('span', { style: 'width:10px;height:10px;border-radius:3px;background:' + catColor(c) + ';flex:none' }),
+        h('span', { style: 'flex:1' }, catName(c)),
+        h('span', { style: 'color:var(--muted);font-variant-numeric:tabular-nums' }, `${v.count}次 · ${pct}%`)));
+    }
+    donutCard.append(legend);
   }
-  box.append(card, catCard);
+
+  // === 热力格（近30天） ===
+  const heatCard = h('div', { class: 'card' }, h('div', { class: 'card-title' }, '近30天记录热力'));
+  const daysSet = S.days || new Set();
+  const today = todayKey();
+  const heatGrid = h('div', { style: 'display:grid;grid-template-columns:repeat(10,1fr);gap:4px;margin-top:8px' });
+  for (let i = 29; i >= 0; i--) {
+    const dk = addDaysKey(today, -i);
+    const has = daysSet.has(dk);
+    heatGrid.append(h('div', {
+      style: `aspect-ratio:1;border-radius:4px;background:${has ? 'var(--primary)' : 'var(--surface2)'};opacity:${has ? 0.7 : 0.5}`,
+      title: dk,
+    }));
+  }
+  heatCard.append(heatGrid);
+  heatCard.append(h('div', { style: 'font-size:11px;color:var(--muted);margin-top:8px;text-align:center' }, '深色 = 当天有记录'));
+
+  box.append(card, donutCard, heatCard);
 }
 function statCell(v, k) { return h('div', { class: 'stat-cell', style: 'min-width:30%' }, h('div', { class: 'v num' }, v), h('div', { class: 'k' }, k)); }
 
