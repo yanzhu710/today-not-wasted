@@ -1,4 +1,4 @@
-﻿// 浠婂ぉ娌＄櫧杩?路 Service Worker锛圓pp Shell 棰勭紦瀛?+ 杩愯鏃剁紦瀛橈紱鏇存柊鐢辩敤鎴风‘璁ゅ悗鍐嶅埛鏂帮級
+﻿// 今天没白过 · Service Worker（App Shell 预缓存 + 运行时缓存；更新由用户确认后再刷新）
 const VERSION = 'tjmbg-v2.2.0';
 const PRECACHE = [
   './',
@@ -20,6 +20,7 @@ const PRECACHE = [
   './js/core/fx.js',
   './js/core/zip.js',
   './js/core/appmeta.js',
+  './js/core/share.js',
   './js/pages/onboard.js',
   './js/pages/today.js',
   './js/pages/plan.js',
@@ -51,7 +52,7 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;
-  // 椤甸潰瀵艰埅锛氱綉缁滀紭鍏堬紝绂荤嚎鍥為€€缂撳瓨锛堝彂甯冩柊鐗堟湰鍚庤兘灏藉揩鎷垮埌鏂伴〉闈級
+  // 页面导航：网络优先，离线回退缓存（发布新版本后能尽快拿到新页面）
   if (req.mode === 'navigate') {
     e.respondWith(
       fetch(req).then((res) => {
@@ -62,7 +63,7 @@ self.addEventListener('fetch', (e) => {
     );
     return;
   }
-  // JS / CSS锛氱綉缁滀紭鍏堬紝纭繚鏇存柊鍚庢嬁鍒版渶鏂颁唬鐮侊紱绂荤嚎鍥為€€缂撳瓨
+  // JS / CSS：网络优先，确保更新后拿到最新代码；离线回退缓存
   if (req.destination === 'script' || req.destination === 'style' || req.url.endsWith('.js') || req.url.endsWith('.css')) {
     e.respondWith(
       fetch(req).then((res) => {
@@ -73,7 +74,7 @@ self.addEventListener('fetch', (e) => {
     );
     return;
   }
-  // 鍏朵粬闈欐€佽祫婧愶細缂撳瓨浼樺厛
+  // 其他静态资源：缓存优先
   e.respondWith(
     caches.match(req).then((hit) => hit || fetch(req).then((res) => {
       if (res.ok) {
