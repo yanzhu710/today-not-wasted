@@ -384,6 +384,7 @@ function renderStats(box) {
   }
 
   // === 近7天趋势柱状图 ===
+  const today = todayKey();
   const trendCard = h('div', { class: 'card' }, h('div', { class: 'card-title' }, '近7天记录趋势'));
   const trendDays = [];
   for (let i = 6; i >= 0; i--) {
@@ -409,7 +410,6 @@ function renderStats(box) {
   // === 热力格（近30天） ===
   const heatCard = h('div', { class: 'card' }, h('div', { class: 'card-title' }, '近30天记录热力'));
   const daysSet = S.days || new Set();
-  const today = todayKey();
   const heatGrid = h('div', { style: 'display:grid;grid-template-columns:repeat(10,1fr);gap:4px;margin-top:8px' });
   for (let i = 29; i >= 0; i--) {
     const dk = addDaysKey(today, -i);
