@@ -5,7 +5,7 @@ import { balance, stats, clearAllForReset, grantOnce, recomputeStats, confirmRev
 import { h, icon, todayKey, fmtCN, fmtMoney, uid } from '../core/util.js';
 import { openModal, formDlg, actionSheet, confirmDlg, toast, configure } from '../core/fx.js';
 import { makeZip, readZip } from '../core/zip.js';
-import { refreshSettings, setProfile, canInstallApp, promptInstallApp } from '../main.js';
+// 动态导入main.js的函数，避免循环导入
 import { fillAvatar } from './onboard.js';
 import { APP_NAME, APP_VERSION, APP_AUTHOR, RELEASE_HIGHLIGHTS } from '../core/appmeta.js';
 import * as sound from '../core/sound.js';
@@ -85,10 +85,10 @@ export async function renderMine(view, ctx) {
   const setCard = h('div', { class: 'card' },
     h('div', { class: 'card-title' }, icon('settings'), '外观与体验'),
     setRow('主题', h('div', { class: 'seg', style: 'width:190px' },
-      h('button', { class: settings.theme !== 'dark' ? 'on' : '', onclick: async (e) => { e.currentTarget.parentElement.querySelectorAll('button').forEach((b, i) => b.classList.toggle('on', i === 0)); await patchKV('settings', { theme: 'warm' }); await refreshSettings(); } }, '温暖手账'),
-      h('button', { class: settings.theme === 'dark' ? 'on' : '', onclick: async (e) => { e.currentTarget.parentElement.querySelectorAll('button').forEach((b, i) => b.classList.toggle('on', i === 1)); await patchKV('settings', { theme: 'dark' }); await refreshSettings(); } }, icon('moon'), '夜读'))),
+      h('button', { class: settings.theme !== 'dark' ? 'on' : '', onclick: async (e) => { e.currentTarget.parentElement.querySelectorAll('button').forEach((b, i) => b.classList.toggle('on', i === 0)); await patchKV('settings', { theme: 'warm' }); await (await import('../main.js')).refreshSettings(); } }, '温暖手账'),
+      h('button', { class: settings.theme === 'dark' ? 'on' : '', onclick: async (e) => { e.currentTarget.parentElement.querySelectorAll('button').forEach((b, i) => b.classList.toggle('on', i === 1)); await patchKV('settings', { theme: 'dark' }); await (await import('../main.js')).refreshSettings(); } }, icon('moon'), '夜读'))),
     setRow('动效', h('div', { class: 'seg', style: 'width:230px' },
-      ['rich', 'light', 'off'].map((m, i) => h('button', { class: settings.motion === m ? 'on' : '', onclick: async (e) => { e.currentTarget.parentElement.querySelectorAll('button').forEach((b, j) => b.classList.toggle('on', j === i)); await patchKV('settings', { motion: m }); await refreshSettings(); } }, ['丰富', '轻', '关'][i])))),
+      ['rich', 'light', 'off'].map((m, i) => h('button', { class: settings.motion === m ? 'on' : '', onclick: async (e) => { e.currentTarget.parentElement.querySelectorAll('button').forEach((b, j) => b.classList.toggle('on', j === i)); await patchKV('settings', { motion: m }); await (await import('../main.js')).refreshSettings(); } }, ['丰富', '轻', '关'][i])))),
     setRow('声音', h('div', { style: 'display:flex;align-items:center;gap:10px;flex:1;justify-content:flex-end' },
       h('button', { class: 'iconbtn', style: 'width:38px;height:38px', onclick: async () => { const { toggleMute } = await import('../main.js'); toggleMute(); setTimeout(() => ctx.rerender(), 100); } }, icon(settings.muted ? 'muted' : 'volume')),
       h('input', { class: 'input range', type: 'range', min: '0', max: '100', value: settings.volume, style: 'width:130px', oninput: async (e) => { await patchKV('settings', { volume: Number(e.target.value) }); const { setVolume } = await import('../core/sound.js'); setVolume(Number(e.target.value)); } }),
@@ -112,7 +112,7 @@ export async function renderMine(view, ctx) {
     h('div', { class: 'card-title' }, icon('search'), '设备与状态'),
     h('div', { class: 'stat-row' },
       h('div', { class: 'stat-cell' }, h('div', { class: 'v' }, standalone ? '已安装' : '网页'), h('div', { class: 'k' }, '运行形态')),
-      h('div', { class: 'stat-cell' }, h('div', { class: 'v' }, canInstallApp() ? '可安装' : '已处理'), h('div', { class: 'k' }, '安装状态')),
+      h('div', { class: 'stat-cell' }, h('div', { class: 'v' }, (await import('../main.js')).canInstallApp() ? '可安装' : '已处理'), h('div', { class: 'k' }, '安装状态')),
       h('div', { class: 'stat-cell' }, h('div', { class: 'v' }, hasSW ? 'PWA' : 'Web'), h('div', { class: 'k' }, '离线能力'))),
     h('div', { class: 'row-sub', style: 'margin-top:10px;gap:6px' },
       h('span', { class: 'tag tag-pri' }, `任务 ${taskN}`),
@@ -128,19 +128,19 @@ export async function renderMine(view, ctx) {
     h('div', { class: 'card-title' }, icon('download'), '安装与发布'),
     h('div', { class: 'row-sub', style: 'margin-bottom:10px' }, '建议添加到主屏幕使用，也更有利于长期保留本地数据。'),
     h('div', { class: 'btn-row' },
-      h('button', { class: 'btn ' + (canInstallApp() ? 'btn-primary' : 'btn-ghost') + ' btn-sm', style: 'flex:1', onclick: async () => {
-        if (canInstallApp()) {
-          const ok = await promptInstallApp();
+      h('button', { class: 'btn ' + ((await import('../main.js')).canInstallApp() ? 'btn-primary' : 'btn-ghost') + ' btn-sm', style: 'flex:1', onclick: async () => {
+        if ((await import('../main.js')).canInstallApp()) {
+          const ok = await (await import('../main.js')).promptInstallApp();
           toast(ok ? '安装提示已弹出' : '本次未安装', { ic: ok ? 'check' : 'info' });
           ctx.rerender();
         } else installGuide();
-      } }, icon('download'), canInstallApp() ? '添加到主屏幕' : '查看安装方式'),
+      } }, icon('download'), (await import('../main.js')).canInstallApp() ? '添加到主屏幕' : '查看安装方式'),
       h('button', { class: 'btn btn-ghost btn-sm', style: 'flex:1', onclick: releaseNotes }, icon('edit'), '版本说明')));
 
   const preflightItems = [
     { ok: !!appMeta.lastBackupAt, label: '已做一次本机备份', sub: appMeta.lastBackupAt ? `最近备份 ${fmtCN(new Date(appMeta.lastBackupAt).toISOString().slice(0, 10))}` : '正式上线或迁移设备前建议先导出一次' },
     { ok: window.location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname), label: '运行环境支持 PWA', sub: window.location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname) ? '当前环境可注册 Service Worker' : 'GitHub Pages 发布后会自动变为 HTTPS' },
-    { ok: standalone || canInstallApp(), label: '支持安装到主屏幕', sub: standalone ? '当前已是独立应用形态' : canInstallApp() ? '当前浏览器已给出安装提示能力' : '部分浏览器需要手动从菜单里安装' },
+    { ok: standalone || (await import('../main.js')).canInstallApp(), label: '支持安装到主屏幕', sub: standalone ? '当前已是独立应用形态' : (await import('../main.js')).canInstallApp() ? '当前浏览器已给出安装提示能力' : '部分浏览器需要手动从菜单里安装' },
     { ok: !!profile.nickname || !!profile.account, label: '资料与本机档案已建立', sub: profile.nickname || profile.account ? `当前档案：${profile.nickname || profile.account}` : '建议先完成资料确认' },
     { ok: taskN + journalN + photoN > 0, label: '已有真实数据样例', sub: `任务 ${taskN} · 手账 ${journalN} · 照片 ${photoN}` },
   ];
@@ -202,7 +202,7 @@ async function editProfile(ctx) {
       {
         label: '保存', cls: 'btn-primary', onClick: async (c) => {
           await patchKV('profile', { nickname: nickInp.value.trim() || profile.account, avatarId });
-          setProfile(await loadKV('profile'));
+          await (await import('../main.js')).setProfile(await loadKV('profile'));
           toast('已保存');
           c(); ctx.rerender();
         },
@@ -388,7 +388,7 @@ async function preflightCheck() {
   const standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
   const httpsOk = window.location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname);
   const backupOk = !!appMeta.lastBackupAt;
-  const installOk = standalone || canInstallApp();
+  const installOk = standalone || (await import('../main.js')).canInstallApp();
   const checklist = [
     { ok: backupOk, t: '备份', d: backupOk ? '已做过至少一次本机导出备份。' : '建议先导出一份 ZIP 备份，再长期使用或换设备。' },
     { ok: httpsOk, t: '运行环境', d: httpsOk ? '当前环境可用 HTTPS / localhost，PWA 能力可正常启用。' : '当前不是 HTTPS，GitHub Pages 发布后会恢复完整 PWA 能力。' },
