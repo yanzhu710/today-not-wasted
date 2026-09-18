@@ -6,7 +6,7 @@ import { h, icon, todayKey, fmtCN, fmtMoney, uid } from '../core/util.js';
 import { openModal, formDlg, actionSheet, confirmDlg, toast, configure } from '../core/fx.js';
 import { makeZip, readZip } from '../core/zip.js';
 // 动态导入main.js的函数，避免循环导入
-import { fillAvatar } from './onboard.js';
+import { fillAvatar, clearAvatarCache } from '../core/avatar.js';
 import { APP_NAME, APP_VERSION, APP_AUTHOR, RELEASE_HIGHLIGHTS } from '../core/appmeta.js';
 import * as sound from '../core/sound.js';
 
