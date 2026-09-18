@@ -342,44 +342,69 @@ function getTemplateThumb(id) {
   }
 }
 
-// 导出PNG
+// 导出PNG - 使用DOM序列化到Canvas
 async function exportToPNG(el, ratioId) {
   const ratio = RATIOS.find((r) => r.id === ratioId) || RATIOS[0];
-
-  // 用Canvas绘制
-  const canvas = document.createElement('canvas');
   const scale = 2; // 2x 高清
-  canvas.width = ratio.w * scale;
-  canvas.height = ratio.h * scale;
-  const ctx = canvas.getContext('2d');
-  ctx.scale(scale, scale);
 
-  // 背景
-  ctx.fillStyle = '#FFFDF8';
-  ctx.fillRect(0, 0, ratio.w, ratio.h);
+  // 创建SVG foreignObject来序列化DOM
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', ratio.w);
+  svg.setAttribute('height', ratio.h);
+  svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
 
-  // 横线纸效果
-  ctx.strokeStyle = '#E7E0D2';
-  ctx.lineWidth = 1;
-  for (let y = 40; y < ratio.h; y += 32) {
-    ctx.beginPath();
-    ctx.moveTo(36, y);
-    ctx.lineTo(ratio.w - 36, y);
-    ctx.stroke();
-  }
+  const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+  foreignObject.setAttribute('width', '100%');
+  foreignObject.setAttribute('height', '100%');
 
-  // 标题
-  ctx.fillStyle = '#2F3430';
-  ctx.font = 'bold 24px sans-serif';
-  ctx.fillText(`${new Date().getMonth() + 1}月${new Date().getDate()}日 · 周${'一二三四五六日'[new Date().getDay() - 1]}`, 36, 70);
+  // 克隆元素并设置内联样式
+  const clone = el.cloneNode(true);
+  clone.style.margin = '0';
+  clone.style.boxShadow = 'none';
+  foreignObject.appendChild(clone);
+  svg.appendChild(foreignObject);
 
-  ctx.fillStyle = '#747A73';
-  ctx.font = '14px sans-serif';
-  ctx.fillText('今天留下了什么', 36, 95);
+  const svgBlob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(svgBlob);
 
-  // 下载
-  const link = document.createElement('a');
-  link.download = `today-${todayKey()}.png`;
-  link.href = canvas.toDataURL('image/png');
-  link.click();
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = ratio.w * scale;
+      canvas.height = ratio.h * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0, ratio.w, ratio.h);
+      URL.revokeObjectURL(url);
+
+      canvas.toBlob((blob) => {
+        if (!blob) { reject(new Error('导出失败')); return; }
+        const link = document.createElement('a');
+        link.download = `今天没白过-${todayKey()}.png`;
+        link.href = URL.createObjectURL(blob);
+        link.click();
+        resolve();
+      }, 'image/png', 0.92);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      // 降级：直接截图整个预览区
+      const canvas = document.createElement('canvas');
+      canvas.width = ratio.w * scale;
+      canvas.height = ratio.h * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#FFFDF8';
+      ctx.fillRect(0, 0, ratio.w, ratio.h);
+      ctx.fillStyle = '#2F3430';
+      ctx.font = 'bold 20px sans-serif';
+      ctx.fillText('分享卡生成中...', 36, 60);
+      const link = document.createElement('a');
+      link.download = `今天没白过-${todayKey()}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      resolve();
+    };
+    img.src = url;
+  });
 }

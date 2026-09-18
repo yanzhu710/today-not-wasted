@@ -102,8 +102,9 @@ async function renderHomeTab(box, ctx) {
       if (v && v.n.trim()) { await savePetName(active, v.n); toast('已保存'); ctx.rerender(); }
     } }, icon('edit')));
 
-  const actions = h('div', { class: 'pet-actions' },
+  const actions = h('div', { class: 'pet-actions', style: 'display:grid;grid-template-columns:1fr 1fr;gap:8px' },
     actBtn('touch', '摸摸', 'heart', touchPet),
+    actBtn('encourage', '鼓励', 'thumb', encouragePet),
     actBtn('feed', '喂食', 'gift', feedPet),
     actBtn('play', '玩耍', 'pet', playPet),
     actBtn('name', '改名', 'edit', async () => {
@@ -149,7 +150,18 @@ async function renderHomeTab(box, ctx) {
     burstAt(petWrapRef, { colors: ['#7A8FB5', '#9AB5C9', '#D8A94D'], count: 10, spread: 44, rise: 54 });
     floatFx(sceneBox, 'note');
     await petInteract({ toy: true, itemId: it.itemId });
+    toast(`${active.name || def.name} 玩得很开心！`, { ic: 'pet' });
     ctx.rerender();
+  }
+  async function encouragePet() {
+    sound.play('pet');
+    petAct(petWrapRef, 'happy');
+    pulse(petWrapRef);
+    burstAt(petWrapRef, { colors: ['#D8A94D', '#F2D98C', '#FFF6DF'], count: 12, spread: 40, rise: 60 });
+    floatFx(sceneBox, 'star');
+    await petInteract({ touch: true });
+    const encouragements = ['你真棒！', '一起加油！', '今天也辛苦了', '你做得很好！', '为你骄傲！'];
+    toast(encouragements[Math.floor(Math.random() * encouragements.length)], { ic: 'heart' });
   }
   async function dressPet() {
     const inv = await all('inventory');

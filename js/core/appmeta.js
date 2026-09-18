@@ -1,5 +1,5 @@
 ﻿export const APP_NAME = '浠婂ぉ娌＄櫧杩?;
-export const APP_VERSION = '2.1.0';
+export const APP_VERSION = '2.2.0';
 export const APP_AUTHOR = 'yanzhu';
 export const RELEASE_HIGHLIGHTS = [
   '浠婂ぉ椤甸潰鍏ㄦ柊鏀圭増锛氬疇鐗╅櫔浼村崱 + 涓昏褰曟寜閽?+ 蹇嵎璁板綍銆?,

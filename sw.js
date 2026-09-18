@@ -1,5 +1,5 @@
 ﻿// 浠婂ぉ娌＄櫧杩?路 Service Worker锛圓pp Shell 棰勭紦瀛?+ 杩愯鏃剁紦瀛橈紱鏇存柊鐢辩敤鎴风‘璁ゅ悗鍐嶅埛鏂帮級
-const VERSION = 'tjmbg-v2.1.0';
+const VERSION = 'tjmbg-v2.2.0';
 const PRECACHE = [
   './',
   './index.html',
