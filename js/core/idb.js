@@ -13,20 +13,23 @@ function p(req) {
     req.onerror = () => reject(req.error);
   });
 }
-function writeOne(db, store, operation) {
+function writeRequest(db, store, action) {
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(store, 'readwrite'); let result;
+    const tx = db.transaction(store, 'readwrite');
+    let result;
     tx.oncomplete = () => resolve(result);
-    tx.onabort = () => reject(tx.error || new Error('写入未提交'));
-    tx.onerror = () => {};
-    try { const request = operation(tx.objectStore(store)); request.onsuccess = () => {result = request.result;}; }
-    catch(e) { tx.abort(); reject(e); }
+    tx.onabort = () => reject(tx.error || new Error('写入事务已取消'));
+    tx.onerror = () => reject(tx.error || new Error('本地保存失败'));
+    try {
+      const req = action(tx.objectStore(store));
+      req.onsuccess = () => { result = req.result; };
+    } catch (error) { tx.abort(); reject(error); }
   });
 }
-export function idbPut(db, store, value) { return writeOne(db, store, st => st.put(value)); }
+export function idbPut(db, store, value) { return writeRequest(db, store, st => st.put(value)); }
 export function idbGet(db, store, key) { return p(db.transaction(store).objectStore(store).get(key)); }
-export function idbDelete(db, store, key) { return writeOne(db, store, st => st.delete(key)); }
-export function idbClear(db, store) { return writeOne(db, store, st => st.clear()); }
+export function idbDelete(db, store, key) { return writeRequest(db, store, st => st.delete(key)); }
+export function idbClear(db, store) { return writeRequest(db, store, st => st.clear()); }
 export function idbAll(db, store, range) {
   const st = db.transaction(store).objectStore(store);
   return p(range ? st.getAll(range) : st.getAll());
@@ -44,21 +47,14 @@ export function idbCount(db, store) { return p(db.transaction(store).objectStore
 export function idbTransaction(db, storeNames, ops) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeNames, 'readwrite');
-    let failure = null;
     tx.oncomplete = () => resolve(true);
-    tx.onerror = () => {}; // onabort observes the final transaction outcome.
-    tx.onabort = () => reject(failure || tx.error || new Error('transaction aborted'));
-    try {
-      for (const op of ops) {
-        const store = tx.objectStore(op.store);
-        if (op.type === 'put') store.put(op.value);
-        else if (op.type === 'delete') store.delete(op.key);
-        else if (op.type === 'clear') store.clear();
-        else throw new Error('Unsupported database operation: ' + op.type);
-      }
-    } catch (error) {
-      failure = error;
-      try { tx.abort(); } catch { reject(error); }
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error('transaction aborted'));
+    for (const op of ops) {
+      const st = tx.objectStore(op.store);
+      if (op.type === 'put') st.put(op.value);
+      else if (op.type === 'delete') st.delete(op.key);
+      else if (op.type === 'clear') st.clear();
     }
   });
 }

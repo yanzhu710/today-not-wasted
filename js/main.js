@@ -100,21 +100,37 @@ function buildShell() {
     if (NAVS.some((n) => n.id === r) && r !== currentRoute) route(r);
   });
 }
-export function route(id) {
-  const nav = NAVS.find((n) => n.id === id) || NAVS[0];
-  currentRoute = nav.id;
-  if (location.hash !== '#/' + nav.id) history.replaceState(null, '', '#/' + nav.id);
+let renderSequence = 0;
+let activeRouteSpec = '';
+export async function route(id) {
+  const requested = String(id || 'today').replace(/^#\/?/, '');
+  const [page, query] = requested.split('?');
+  const nav = NAVS.find(n => n.id === page) || NAVS[0];
+  const samePage = currentRoute === nav.id;
+  const params = new URLSearchParams(query ?? (samePage ? activeRouteSpec.split('?')[1] || '' : ''));
+  const spec = nav.id + (params.size ? '?' + params.toString() : '');
+  currentRoute = nav.id; activeRouteSpec = spec;
+  if (location.hash !== '#/' + spec) history.replaceState(null, '', '#/' + spec);
   for (const n of NAVS) qs('#tab-' + n.id)?.classList.toggle('active', n.id === nav.id);
   renderTopbar(nav);
-  const view = qs('#view');
-  view.innerHTML = '';
+  const oldView = qs('#view'); if (!oldView) return;
+  const ticket = ++renderSequence;
+  const view = h('main', { class:'view', id:'view' });
+  oldView.replaceWith(view);
   document.body.dataset.route = nav.id;
-  nav.render(view, { rerender: () => route(currentRoute) });
-  requestAnimationFrame(() => {
-    view.classList.remove('page-enter');
-    void view.offsetWidth;
-    view.classList.add('page-enter');
-  });
+  try {
+    await nav.render(view, {
+      routeParams: params,
+      rerender: () => { if (ticket === renderSequence) return route(spec); },
+    });
+    if (ticket !== renderSequence) return;
+    requestAnimationFrame(() => { if (view.isConnected) view.classList.add('page-enter'); });
+  } catch (error) {
+    if (ticket !== renderSequence) return;
+    console.error(error);
+    view.replaceChildren(h('section',{class:'card'},h('p',null,'页面未能完成加载，请重试。'),h('button',{class:'btn btn-primary',onclick:()=>route(spec)},'重新加载')));
+    fx.toast('页面加载失败：'+(error?.message || '未知错误'),{ic:'error',ms:3200});
+  }
 }
 function renderTopbar(nav) {
   const bar = qs('#topbar');

@@ -1,11 +1,12 @@
+import { APP_VERSION } from '../core/appmeta.js';
 // 今天没白过 · 首次建档流程：欢迎 → 建档（账户名/密码/昵称/头像）→ 选择宠物 → 完成
 import { loadKV, saveKV, put, genId } from '../core/db.js';
 import { PETS, POINTS } from '../core/catalog.js';
 import { finishOnboard } from '../core/engine.js';
 import { h, uid, qs, icon } from '../core/util.js';
 import { petSVG } from '../core/pets.js';
-import { cropAndSave, fillAvatar } from '../core/avatar.js';
 import { formDlg, toast, queueSettle } from '../core/fx.js';
+import { cropAndSave, fillAvatar, chooseAvatar } from '../core/avatar.js';
 import * as sound from '../core/sound.js';
 
 export function renderOnboard(container, onDone) {
@@ -33,7 +34,7 @@ export function renderOnboard(container, onDone) {
           obRow('pet', '选一只伙伴', '它会陪你记录生活、慢慢成长，不会因为几天没来而离开。'))),
       h('div', { class: 'ob-foot' },
         h('button', { class: 'btn btn-primary btn-block', onclick: () => { sound.play('tap'); next(); } }, '开始体验'),
-        h('div', { class: 'ob-note' }, '制作人：yanzhu · v1.0')));
+        h('div', { class: 'ob-note' }, '制作人：yanzhu · v' + APP_VERSION)));
   }
   function obRow(ic, t, s) {
     return h('div', { class: 'row-item' }, h('span', { class: 'settle-ic' }, icon2(ic)), h('div', { class: 'row-main' }, h('div', { class: 'row-title' }, t), h('div', { class: 'row-sub' }, s)));
@@ -46,14 +47,18 @@ export function renderOnboard(container, onDone) {
     const avatarImg = h('div', { class: 'avatar-fb', style: 'width:68px;height:68px' }, '选头像');
     const errBox = h('div', { class: 'form-hint', style: 'color:var(--danger);min-height:16px' });
 
-    avatarImg.addEventListener('click', async () => {
-      const inp = h('input', { type: 'file', accept: 'image/*', style: 'display:none' });
-      inp.addEventListener('change', () => {
-        const file = inp.files && inp.files[0];
-        if (file) cropAndSave(file).then((id) => { if (id) { state.avatarId = id; avatarImg.className = 'avatar'; avatarImg.style.cssText = 'width:68px;height:68px'; fillAvatar(avatarImg, id); } });
-      });
-      document.body.append(inp); inp.click(); setTimeout(() => inp.remove(), 5000);
-    });
+    if (state.avatarId) fillAvatar(avatarImg, state.avatarId);
+    avatarImg.setAttribute('role', 'button'); avatarImg.tabIndex = 0;
+    avatarImg.style.fontSize = '13px'; avatarImg.style.flexShrink = '0';
+    const selectAvatar = async () => {
+      const id = await chooseAvatar();
+      if (!id) return;
+      state.avatarId = id;
+      avatarImg.className = 'avatar';
+      await fillAvatar(avatarImg, id);
+    };
+    avatarImg.addEventListener('click', selectAvatar);
+    avatarImg.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectAvatar(); } });
 
     return h('div', { class: 'rise' },
       h('div', { class: 'ob-dots' }, dot(1), dot(2), dot(3)),
@@ -83,13 +88,13 @@ export function renderOnboard(container, onDone) {
           }, '下一步'))));
   }
   function petPage() {
-    const nameInp = h('input', { class: 'input', placeholder: '给它起个名字（可稍后再起）', maxlength: '12' });
+    const nameInp = h('input', { class: 'input', placeholder: '给它起个名字（可稍后再起）', maxlength: '12', value: state.petName });
     let sel = state.petId;
     const cards = h('div', { class: 'ob-pets' },
       PETS.map((p) => h('button', {
         class: 'ob-pet' + (p.petId === sel ? ' on' : ''),
         onclick: (e) => {
-          sel = p.petId; sound.play('tap');
+          sel = p.petId; state.petId = sel; sound.play('tap');
           [...cards.children].forEach((c) => c.classList.toggle('on', c === e.currentTarget));
         },
       }, h('div', { class: 'pv' }, h('img', { src: './assets/pets/' + p.petId + '.png', alt: p.name, style: 'width:100%;height:100%;object-fit:contain' })), h('div', { class: 'nm' }, p.name), h('div', { class: 'sp' }, p.species))));
@@ -149,3 +154,4 @@ function icon2(name) {
   return el;
 }
 
+export { cropAndSave, fillAvatar, clearAvatarCache } from '../core/avatar.js';

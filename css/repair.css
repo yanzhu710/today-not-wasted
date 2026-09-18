@@ -1,24 +1,27 @@
-/* v2.3.1 功能修复层：保留原手账主题，不覆盖全站配色。 */
-button:disabled { opacity:.5; cursor:not-allowed; }
-.repair-seg { display:flex; gap:6px; flex-wrap:wrap; margin:8px 0 12px; }
-.repair-seg button { border-radius:999px; padding:8px 14px; background:var(--surface2); color:var(--text); }
-.repair-seg button.on { background:var(--primary); color:var(--surface); }
-.repair-range { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
-.repair-share-preview canvas { display:block; width:100%; height:auto; border-radius:14px; box-shadow:0 4px 18px #00000014; }
-.repair-share-controls label { display:inline-flex; align-items:center; gap:5px; margin:4px 12px 4px 0; font-size:13px; }
-.repair-share-preview[aria-busy="true"] { opacity:.55; }
-.repair-share-note { width:100%; margin:10px 0; }
-.repair-stat-svg { width:100%; max-width:300px; height:auto; display:block; margin:auto; }
-.repair-trend { display:flex; gap:4px; align-items:flex-end; min-height:118px; overflow-x:auto; padding:4px 0; }
-.repair-trend button { min-width:28px; flex:1; background:transparent; font-size:10px; color:var(--muted); }
-.repair-trend .plot { display:flex; align-items:flex-end; justify-content:center; height:80px; }
-.repair-trend .bar-item { width:75%; background:var(--primary); border-radius:5px 5px 0 0; }
-.repair-heat { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:5px; }
-.repair-heat button { aspect-ratio:1; border-radius:5px; font-size:11px; padding:2px; color:var(--text); }
-.repair-memories .row-title { white-space:normal; }
-.repair-pet-message { font-size:13px; line-height:1.65; color:var(--primary-deep); margin:8px 0; }
-.repair-avatar { width:36px; height:36px; flex:none; overflow:hidden; border-radius:50%; }
-@media (max-width:360px) { .repair-seg button { padding:7px 11px; } }
-@media (prefers-reduced-motion:reduce) { .repair-share-preview { transition:none; } }
+/* Scoped additions; preserve the site's existing visual theme. */
+.repair-caption{font-size:12px;color:var(--muted,#77806F);line-height:1.65;white-space:normal;overflow-wrap:anywhere;display:block;margin:8px 0}
+.repair-controls{display:grid;gap:10px}.repair-date-row{display:flex;gap:8px;align-items:center}.repair-date-row input{flex:1;min-width:0}
+.repair-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
+.repair-metrics>div{background:var(--surface2,#F7F3EA);padding:13px;border-radius:16px;display:grid;gap:4px}
+.repair-metrics strong{font-size:22px;color:var(--primary-deep,#48634F);font-variant-numeric:tabular-nums}.repair-metrics span{font-size:12px;color:var(--muted)}
+.repair-donut{display:block;width:min(100%,240px);height:auto;margin:8px auto}.repair-chart-total{font-size:28px;font-weight:800;fill:var(--text,#344B3A)}.repair-chart-label{font-size:13px;fill:var(--muted,#66785F)}
+.repair-legend{display:flex;gap:8px;align-items:center;background:none;border:0;border-radius:9px;padding:9px 4px;width:100%;color:var(--text);text-align:left;font:inherit}
+.repair-legend i{width:11px;height:11px;border-radius:4px;flex:none}.repair-legend span{flex:1;font-size:13px}.repair-legend b{font-size:12px;font-variant-numeric:tabular-nums;font-weight:500}
+.repair-chart-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}.repair-bars{display:flex;align-items:flex-end;gap:8px;min-width:min(100%,280px);padding:10px 2px}
+.repair-bar{display:grid;gap:4px;justify-items:center;flex:1;min-width:34px;border:0;background:none;color:var(--muted);padding:0;font:inherit}
+.repair-bar-area{display:flex;align-items:flex-end;width:min(100%,36px);height:100px;border-bottom:1px solid var(--line,#DDD)}.repair-bar-area i{width:100%;background:var(--primary,#7C977B);border-radius:7px 7px 0 0;transition:height .25s ease}
+.repair-bar small{font-size:10px;font-variant-numeric:tabular-nums}.repair-heat{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;margin-top:14px}
+.repair-heat-label{text-align:center;color:var(--muted);font-size:11px}.repair-heat-cell{border:0;border-radius:8px;aspect-ratio:1;min-height:30px;background:var(--surface2,#EEE);color:var(--text,#344B3A);font:inherit;font-size:11px}
+.repair-heat-cell.level-1{background:#D6E4CF;color:#344B3A}.repair-heat-cell.level-2{background:#9BBA94;color:#263D2B}.repair-heat-cell.level-3{background:#5E825B;color:white}
+.repair-share{display:grid;gap:12px;min-width:0}.repair-share h3{font-size:15px;margin:2px 0}.repair-share .seg{margin:0}.repair-share-checks{display:grid;gap:8px;font-size:12px;color:var(--text)}
+.repair-share-checks label{display:flex;align-items:center;gap:8px;line-height:1.6}.repair-share-checks input{width:17px;height:17px;flex:none}
+.repair-share-preview{width:100%;min-width:0;overflow:hidden}.repair-share-preview canvas{max-width:100%;height:auto;box-shadow:0 4px 18px #584b2c12}
+.repair-track-image{width:60px;height:60px;object-fit:contain;flex:none;background:transparent!important;border-radius:0!important}
+.repair-track-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.repair-track-grid button{min-height:80px;text-align:left;white-space:normal;display:flex;align-items:center;gap:8px;padding:10px}
+.repair-track-grid img{width:36px;height:36px;object-fit:contain}.repair-track-grid span{font-size:12px;overflow-wrap:anywhere}
+.repair-item-list{display:grid;gap:10px}.repair-item-choice{display:flex;gap:10px;align-items:center;text-align:left;border:1px solid var(--line);border-radius:16px;background:var(--surface2);color:var(--text);padding:12px;font:inherit}
+.repair-item-choice img{width:48px;height:48px;object-fit:contain}.repair-item-choice span{flex:1}.repair-item-choice small{display:block;color:var(--muted)}
+.modal-card[aria-busy="true"] .modal-x{opacity:.4}.modal-card button:disabled{opacity:.5;cursor:not-allowed}
+@media(prefers-reduced-motion:reduce){.repair-bars *{transition:none!important;animation:none!important}}
 
-.repair-heat .heat-weekday {text-align:center;font-size:11px;color:var(--muted);padding:4px 0;}
+.repair-track-row{display:flex;gap:12px;align-items:center}.repair-track-row>div{min-width:0}.repair-track-row p{margin:3px 0}.repair-item-choice small{font-size:11px}button[aria-busy="true"]{cursor:progress}

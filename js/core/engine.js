@@ -1,11 +1,12 @@
 // 今天没白过 · 业务引擎：completion_event / 积分流水 / 日上限 / 成长值 / 徽章解锁 / 撤销修正
 // 原则：先可靠保存，后庆祝；同一来源不重复发奖（grantOnce 幂等）；余额 = 流水求和。
-import { db, put, get, del, all, allByIndex, getByIndex, atomically, loadKV, saveKV, patchKV } from './db.js';
+import { put, get, del, all, allByIndex, getByIndex, atomically, loadKV, saveKV, patchKV } from './db.js';
 import { BADGES, POINTS, GROWTH, STAGES, stageOf, PETS, shopById, catName, isUnlocked, unlockText } from './catalog.js';
 import { todayKey, dateKey, weekKeyOf, monthKeyOf, uid, fmtMin, debounce } from './util.js';
+import { VALID_KINDS, isLifeEvent, aggregatePeriod } from './analytics.js';
+import { buyAtomic, consumeAtomic } from './inventory-ops.js';
 import * as fx from './fx.js';
 import * as sound from './sound.js';
-import { VALID_KINDS, isValidRecord } from './record-summary.js';
 
 export const DATA_EVENT = 'tjmbg:data';
 function emit() { window.dispatchEvent(new CustomEvent(DATA_EVENT)); }
@@ -82,12 +83,13 @@ export async function reverseSource(sourceEventId, reason = '撤销修正') {
     const rd = 'rv:' + r.id;
     const ex = await getByIndex('points', 'dedupe', rd);
     if (ex) continue;
-    const row = { id: uid('pt'), dedupe: rd, ts: Date.now(), dateKey: r.dateKey || todayKey(), delta: -r.delta, reason, kind: r.kind, cls: 'adjust', sourceEventId: null };
+    const row = { id: uid('pt'), dedupe: rd, ts: Date.now(), dateKey: todayKey(), delta: -r.delta, reason, kind: r.kind, cls: 'adjust', sourceEventId: null };
     await put('points', row);
     _bal += row.delta;
-    _caps.date = null;
   }
+  _caps = { date: null, all: 0, byKind: {} };
 }
+
 
 // ---- 宠物成长 ----
 export async function getActivePet() {
@@ -149,7 +151,6 @@ export async function doTaskComplete(task) {
   const g = await grantGrowth(GROWTH.task, { reason: '完成任务' });
   sound.play('complete');
   statsDirty();
-  window.dispatchEvent(new CustomEvent("tjmbg:record-saved"));
   return { points: p, growth: g, title: task.title, sub: catName(task.category), ic: 'task', kind: 'task' };
 }
 export async function doTaskUndo(task) {
@@ -176,7 +177,6 @@ export async function doHabitDone(habit, dk = todayKey()) {
   const g = await grantGrowth(GROWTH.habit, { reason: '完成习惯', dateKey: dk });
   sound.play('complete');
   statsDirty();
-  window.dispatchEvent(new CustomEvent("tjmbg:record-saved"));
   return { points: p, growth: g, title: habit.name, sub: catName(habit.category), ic: 'task', kind: 'habit' };
 }
 export async function doHabitUndo(habit, dk = todayKey()) {
@@ -195,7 +195,6 @@ export async function addQuickRecord({ dateKey: dk = todayKey(), category, count
   const p = await grantPoints({ delta: POINTS.quick.delta, reason: `快捷记录「${title || catName(category)}」`, kind: 'quick', dateKey: dk, sourceEventId: ev.id });
   sound.play('complete');
   statsDirty();
-  window.dispatchEvent(new CustomEvent("tjmbg:record-saved"));
   return { points: p, growth: 0, title: title || catName(category), sub: catName(category), ic: 'quick', kind: 'quick' };
 }
 export async function deleteQuickRecord(rec) {
@@ -248,7 +247,6 @@ export async function saveJournal(entry) {
     rewards = { points: p, growth: g, title: '保存手账', ic: 'journal', kind: 'journal' };
   }
   statsDirty();
-  window.dispatchEvent(new CustomEvent("tjmbg:record-saved"));
   return rewards;
 }
 export async function deleteJournal(entry) {
@@ -267,7 +265,6 @@ export async function addLedgerEntry({ type, amount, category, note = '', dateKe
   const g = first ? await grantGrowth(GROWTH.ledgerFirst, { reason: '记账', dateKey: dk }) : 0;
   sound.play('pop');
   statsDirty();
-  window.dispatchEvent(new CustomEvent("tjmbg:record-saved"));
   return { points: p, growth: g, title: '记了一笔账', ic: 'ledger', kind: 'ledger' };
 }
 export async function deleteLedgerEntry(entry) {
@@ -279,8 +276,8 @@ export async function toggleMilestone(goal, ms) {
   if (!ms.done) {
     ms.done = true; ms.doneAt = Date.now();
     await put('goals', goal);
-    const ev = await addEvent({ kind: 'milestone', refId: ms.id, category: goal.category || null });
-    const p = await grantOnce('ms:' + ms.id, { delta: POINTS.milestone.delta, reason: `达成里程碑「${ms.title}」`, kind: 'milestone', cls: 'milestone', sourceEventId: ev.id });
+    await addEvent({ kind: 'milestone', refId: ms.id, category: goal.category || null });
+    const p = await grantOnce('ms:' + ms.id, { delta: POINTS.milestone.delta, reason: `达成里程碑「${ms.title}」`, kind: 'milestone', cls: 'milestone' });
     const g = await grantGrowth(GROWTH.milestone, { exempt: true, reason: '目标里程碑' });
     sound.play('complete');
     statsDirty();
@@ -302,8 +299,8 @@ export async function grantOnce(base, payload) {
 export async function completeGoal(goal) {
   goal.status = 'done'; goal.doneAt = Date.now();
   await put('goals', goal);
-  const ev = await addEvent({ kind: 'goal', refId: goal.id, category: goal.category || null });
-  const p = await grantOnce('goal:' + goal.id, { delta: POINTS.goal.delta, reason: `完成目标「${goal.title}」`, kind: 'goal', cls: 'milestone', sourceEventId: ev.id });
+  await addEvent({ kind: 'goal', refId: goal.id, category: goal.category || null });
+  const p = await grantOnce('goal:' + goal.id, { delta: POINTS.goal.delta, reason: `完成目标「${goal.title}」`, kind: 'goal', cls: 'milestone' });
   const g = await grantGrowth(GROWTH.goal, { exempt: true, reason: '完成目标' });
   statsDirty();
   fx.queueCele({ type: 'goal', title: goal.title, sub: '一个目标抵达了终点', points: p });
@@ -326,78 +323,39 @@ export async function confirmReview(type, key) {
 }
 
 // ---- 商城（原子购买：扣分与入库同事务）----
-// 购买：同一 readwrite 事务内检查真实余额、写入积分/库存/事件，避免跨页超支。
-export async function purchaseItem(requestedItem) {
-  const item = shopById(requestedItem?.id);
-  if (!item) return { err: '商品不存在' };
-  if (!['food','toy'].includes(item.cat)) return { err: '该分类本轮仅保留历史收藏，暂不开放兑换' };
-  if (item.unlock) {
-    const S = _S || await recomputeStats();
-    if (!isUnlocked(item, { maxStage: S.petMaxStage || 1, badgeCount: S.badgeCount || 0, seriesComplete: S.seriesComplete || 0 }))
-      return { err: '该商品尚未解锁：' + (unlockText(item) || '条件未满足') };
+export async function purchaseItem(requested) {
+  const item = shopById(requested?.id);
+  if (!item || !Number.isFinite(item.price) || item.price < 0) return { err: '商品无效' };
+  const S = await computeStats();
+  if (!isUnlocked(item, { maxStage: S.petMaxStage || 1, badgeCount: S.badgeCount || 0, seriesComplete: S.seriesComplete || 0 })) {
+    return { err: '商品尚未解锁：' + (unlockText(item) || '条件未满足') };
   }
-  const result = await new Promise(resolve => {
-    const tx = db().transaction(['points','inventory','events'], 'readwrite');
-    let result = { err: '兑换未完成，请重试' }, failure = false;
-    const points = tx.objectStore('points'), invStore = tx.objectStore('inventory');
-    const allPoints = points.getAll(), invReq = invStore.get(item.id);
-    let pending = 2;
-    const prepare = () => {
-      if (--pending) return;
-      const bal = allPoints.result.reduce((s, r) => s + (Number(r.delta) || 0), 0);
-      const inv = invReq.result;
-      if (item.type === 'perm' && inv?.qty > 0) { result = { err: '永久物品已拥有，不能重复购买' }; return; }
-      if (bal < item.price) { result = { err: '积分不足' }; return; }
-      const ts = Date.now(), dk = todayKey();
-      const pts = { id: uid('pt'), dedupe: uid('buy'), ts, dateKey: dk, delta: -item.price,
-        reason: `兑换「${item.name}」`, kind: 'purchase', cls: 'purchase', sourceEventId: null };
-      const next = inv ? { ...inv, qty: inv.qty + 1, lastAt: ts } : { itemId: item.id, qty: 1, firstAt: ts };
-      points.put(pts); invStore.put(next);
-      tx.objectStore('events').put({ id: uid('ev'), ts, dateKey: dk, kind: 'purchase', refId: item.id, meta: { name: item.name } });
-      result = { ok: true, item, inv: next, balance: bal - item.price };
-    };
-    allPoints.onsuccess = prepare; invReq.onsuccess = prepare;
-    tx.oncomplete = () => resolve(result);
-    tx.onabort = () => { if (!failure) { failure = true; resolve({ err: '兑换失败，事务未提交，请重试' }); } };
-    tx.onerror = () => {}; // abort 统一处理
-  });
-  if (result.ok) { _bal = result.balance; sound.play('purchase'); statsDirty(); emit(); }
-  return result;
+  try {
+    const result = await buyAtomic(item);
+    if (result.err) return result;
+    _bal = result.balance;
+    sound.play('purchase'); statsDirty(); emit();
+    return result;
+  } catch (error) { return { err: error.message || '兑换失败，积分和库存未改变' }; }
 }
-
-// 选择道具后，库存扣减与互动事件同事务提交；无库存不能产生成功互动。
+export async function useConsumable(itemId) {
+  const item = shopById(itemId);
+  if (!item || item.type !== 'consumable') return false;
+  return consumeAtomic(itemId);
+}
 export async function usePetItem(itemId) {
   const item = shopById(itemId);
-  if (!item || !['food','toy'].includes(item.cat)) return { err: '这个物品现在不能使用' };
-  const result = await new Promise(resolve => {
-    const tx = db().transaction(['inventory','events'], 'readwrite');
-    const st = tx.objectStore('inventory');
-    const req = st.get(itemId);
-    let result = { err: '背包里没有这个物品了' };
-    req.onsuccess = () => {
-      const inv = req.result;
-      if (!inv || inv.qty <= 0) return;
-      if (item.type === 'consumable') {
-        if (inv.qty === 1) st.delete(itemId); else st.put({ ...inv, qty: inv.qty - 1 });
-      }
-      tx.objectStore('events').put({ id: uid('pe'), ts: Date.now(), dateKey: todayKey(), kind: 'pet',
-        refId: itemId, meta: { food: item.cat === 'food', toy: item.cat === 'toy', touch: false } });
-      result = { ok: true, item };
-    };
-    tx.oncomplete = () => resolve(result);
-    tx.onabort = () => resolve({ err: '使用失败，请重试；此次事务未提交' });
-    tx.onerror = () => {};
-  });
-  if (result.ok) statsDirty();
-  return result;
-}
-
-export async function useConsumable(itemId) {
-  const inv = await get('inventory', itemId);
-  if (!inv || inv.qty <= 0) return false;
-  if (inv.qty === 1) await del('inventory', itemId);
-  else await put('inventory', { ...inv, qty: inv.qty - 1 });
-  return true;
+  if (!item || !['food','toy'].includes(item.cat)) return { err: '这件物品不能用于宠物互动' };
+  if (!(await getActivePet())) return { err: '还没有伙伴' };
+  const ev = { id: uid('pe'), ts: Date.now(), dateKey: todayKey(), kind: 'pet', refId: itemId, meta: { food:item.cat==='food',toy:item.cat==='toy',touch:false } };
+  if (item.type === 'consumable') {
+    if (!(await consumeAtomic(itemId, ev))) return { err: '道具已用完，请重新选择' };
+  } else {
+    const inv = await get('inventory',itemId);
+    if (!inv || inv.qty <= 0) return { err: '尚未拥有该玩具' };
+    await put('events',ev);
+  }
+  statsDirty();return { ok:true,item,event:ev };
 }
 export async function equipItem(petRow, slot, itemId) {
   petRow.equipped = petRow.equipped || {};
@@ -429,6 +387,7 @@ export async function savePetName(petRow, name) {
 export async function setActivePet(petId) { await patchKV('app_meta', { activePet: petId }); }
 
 // ---- 统计与徽章 ----
+// VALID_KINDS is shared with presentation statistics and shares.
 function bumpCat(S, cat, dateKey, minutes) {
   if (!cat) return;
   const st = (S.catStats[cat] = S.catStats[cat] || { count: 0, min: 0, days: new Set() });
@@ -452,11 +411,11 @@ export async function computeStats() {
     ledgerReviewMonths: new Set(),
     petOwned: pets.length > 0, petFoodUsed: false, petToyUsed: false, petInteractions: 0, petMaxStage: 1,
     shopPurchases: 0, outfitEquipped: false, furniturePlaced: false, permItems: 0, showcaseCount: showcase.length, seriesComplete: 0,
-    dayCounts: {}, months: new Set(), days: new Set(), cats: new Set(), badgeCount: 0,
+    months: new Set(), days: new Set(), dayCounts: {}, cats: new Set(), badgeCount: 0,
     seasons: { spring: false, summer: false, autumn: false, winter: false },
   };
   for (const ev of events) {
-    const valid = isValidRecord(ev);
+    const valid = isLifeEvent(ev);
     if (valid) {
       S.days.add(ev.dateKey);
       S.dayCounts[ev.dateKey] = (S.dayCounts[ev.dateKey] || 0) + 1;
@@ -517,17 +476,17 @@ export async function computeStats() {
   }
   return S;
 }
-let _statsQueue = Promise.resolve();
-export const statsDirty = debounce(() => { recomputeStats().catch(console.error); }, 220);
+export const statsDirty = debounce(() => { recomputeStats(); }, 220);
+let recomputeChain = Promise.resolve();
 export function recomputeStats() {
-  const job = _statsQueue.then(async () => {
+  const next = recomputeChain.catch(() => {}).then(async () => {
     _S = await computeStats();
     await evaluateBadges();
     emit();
     return _S;
   });
-  _statsQueue = job.catch(() => {});
-  return job;
+  recomputeChain = next;
+  return next;
 }
 async function evaluateBadges() {
   const unlockedRows = await all('badges');
@@ -550,7 +509,7 @@ async function evaluateBadges() {
     }
     _S.badgeCount = has.size;
     _S.seriesComplete = [...new Set(BADGES.map((b) => b.series))].filter((s) => BADGES.filter((b) => b.series === s).every((b) => has.has(b.id))).length;
-
+    // Re-evaluate count/series dependencies after every pass, without granting an ID twice.
   }
 }
 export async function badgeRows() { return all('badges'); }
@@ -558,14 +517,11 @@ export async function badgeRows() { return all('badges'); }
 // ---- 今日概览 ----
 export async function todaySummary(dk = todayKey()) {
   const caps = await capsFor(dk);
-  const [tasks, events] = await Promise.all([
-    allByIndex('tasks', 'dateKey', dk),
-    allByIndex('events', 'dateKey', dk),
-  ]);
-  const doneTasks = tasks.filter((t) => t.done).length;
-  const valid = events.filter(isValidRecord).length;
-  const focusMin = events.filter(e => isValidRecord(e) && e.kind === "focus").reduce((s,e) => s + Number(e.minutes), 0);
-  return { points: caps.all, pointsCap: POINTS.dailyAllCap, doneTasks, tasks: tasks.length, validEvents: valid, focusMin };
+  const [tasks, events] = await Promise.all([allByIndex('tasks', 'dateKey', dk), allByIndex('events', 'dateKey', dk)]);
+  const concrete = tasks.filter(t => !t.repeat);
+  const summary = aggregatePeriod({ events }, 'day', dk);
+  return { points: caps.all, pointsCap: POINTS.dailyAllCap, doneTasks: concrete.filter(t=>t.done).length,
+    tasks: concrete.length, validEvents: summary.eventCount, focusMin: summary.focusMin };
 }
 
 // ---- 建档 ----
