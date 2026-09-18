@@ -116,7 +116,7 @@ export async function renderToday(view, ctx) {
           h('img', { src: badgeArt(trackBadge.id), alt: trackBadge.name, style: 'width:52px;height:52px;border-radius:16px;object-fit:cover;flex:none' }),
           h('div', { style: 'flex:1;min-width:0' },
             h('div', { style: 'font-weight:700;font-size:14px' }, trackBadge.name),
-            h('div', { style: 'font-size:12px;color:var(--muted);margin-top:2px' }, trackBadge.cond || ''))))),
+            h('div', { style: 'font-size:12px;color:var(--muted);margin-top:2px' }, trackBadge.cond || ''))))
     );
   }
 
