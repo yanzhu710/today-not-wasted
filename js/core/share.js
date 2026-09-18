@@ -186,7 +186,7 @@ async function loadShareData(type, dateKey) {
 
   // 当日新徽章
   const todayBadges = badges.filter((b) => {
-    const dk = new Date(b.unlockedAt || b.createdAt).toISOString().slice(0, 10);
+    const ts = b.unlockedAt || b.createdAt; if (!ts) return false; const dk = new Date(ts).toISOString().slice(0, 10);
     return dk === dateKey;
   }).slice(0, 3);
 
