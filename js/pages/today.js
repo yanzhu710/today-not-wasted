@@ -77,11 +77,16 @@ export async function renderToday(view, ctx) {
       h('div', { class: 'bar' }, h('i', { style: `width:${Math.min(100, Math.round((summary.points / summary.pointsCap) * 100))}%` }))),
   );
 
-  // === 3. 主记录按钮 ===
+  // === 3. 主记录按钮 + 分享 ===
   view.append(
-    h('button', { class: 'btn btn-primary btn-block rise', style: 'min-height:50px;font-size:16px;margin-bottom:12px;border-radius:999px',
-      onclick: () => { sound.play('tap'); quickRecordDialog(); } },
-      icon('plus'), '记一件完成的事'),
+    h('div', { style: 'display:flex;gap:10px;margin-bottom:12px' },
+      h('button', { class: 'btn btn-primary rise', style: 'flex:1;min-height:50px;font-size:15px;border-radius:999px',
+        onclick: () => { sound.play('tap'); quickRecordDialog(); } },
+        icon('plus'), '记一件完成的事'),
+      h('button', { class: 'btn btn-outline rise', style: 'min-height:50px;padding:0 18px;border-radius:999px',
+        onclick: () => { sound.play('tap'); openSharePanel({ type: 'day' }); } },
+        '分享'),
+    ),
   );
 
   // === 4. 快捷记录 ===
