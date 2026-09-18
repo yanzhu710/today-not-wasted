@@ -26,7 +26,7 @@ const NAVS = [
   { id: 'today', name: '今天', ic: 'today', render: renderToday },
   { id: 'plan', name: '计划', ic: 'plan', render: renderPlan },
   { id: 'footprint', name: '足迹', ic: 'footprint', render: renderFootprint },
-  { id: 'home', name: '家园', ic: 'home', render: renderHome },
+  { id: 'home', name: '伙伴', ic: 'home', render: renderHome },
   { id: 'mine', name: '我的', ic: 'mine', render: renderMine },
 ];
 

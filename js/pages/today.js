@@ -1,6 +1,7 @@
-// 今天没白过 · 「今天」页：今日概览 / 任务 / 习惯条 / 快捷记录 / 专注与记账入口 / 最近徽章
+// 今天没白过 · 「今天」页：宠物陪伴卡 / 主记录 / 快捷记录 / 追踪徽章 / 今日任务
 import { all, allByIndex, put, del, get, loadKV, saveKV } from '../core/db.js';
-import { CATS, catName, catColor, BADGES } from '../core/catalog.js';
+import { CATS, catName, catColor, BADGES, PETS, stageOf, stageProgress } from '../core/catalog.js';
+import { petSVG, petAct, floatFx } from '../core/pets.js';
 import { doTaskComplete, doTaskUndo, deleteTask, addQuickRecord, doHabitDone, doHabitUndo, addLedgerEntry, todaySummary, balance } from '../core/engine.js';
 import { h, icon, todayKey, addDaysKey, weekdayOf, uid, fmtMin } from '../core/util.js';
 import { holidayName, dayInfo, nextHoliday } from '../core/holidays.js';
@@ -19,10 +20,10 @@ const QUICK_DEFAULTS = [
 export async function renderToday(view, ctx) {
   const dk = todayKey();
   await ensureInstances(dk);
-  const [tasks, habits, profile, appMeta, settings, summary, badgeRows, quickCfg, events, todayLogs] = await Promise.all([
+  const [tasks, habits, profile, appMeta, settings, summary, badgeRows, quickCfg, events, todayLogs, pets] = await Promise.all([
     all('tasks'), all('habits'), loadKV('profile'), loadKV('app_meta'), loadKV('settings'),
     todaySummary(), all('badges'), loadKV('quick_buttons'), allByIndex('events', 'dateKey', dk),
-    allByIndex('habit_logs', 'dateKey', dk),
+    allByIndex('habit_logs', 'dateKey', dk), all('pets'),
   ]);
   const logByHabit = new Map(todayLogs.map((l) => [l.habitId, l]));
   const quickButtons = quickCfg && quickCfg.length ? quickCfg : QUICK_DEFAULTS;
@@ -33,126 +34,120 @@ export async function renderToday(view, ctx) {
   const hol = holidayName(dk);
   const info = dayInfo(dk);
   const nh = nextHoliday(dk);
-  const weekDone = new Set(events.map((e) => e.dateKey)).size;
+  const activePetId = (appMeta && appMeta.activePet) || (pets[0] && pets[0].petId);
+  const active = pets.find((p) => p.petId === activePetId) || pets[0];
+  const petDef = active ? PETS.find((p) => p.petId === active.petId) : null;
+  const stage = active ? stageOf(active.growth || 0) : null;
+  const prog = active ? stageProgress(active.growth || 0) : null;
 
   view.innerHTML = '';
 
-  // 顶部 tab 切换
-  let curTab = 'overview';
-  const tabs = [
-    { id: 'overview', name: '概览' },
-    { id: 'habit', name: '习惯' },
-    { id: 'ledger', name: '记账' },
-    { id: 'stats', name: '统计' },
-  ];
-  const tabBar = h('div', { class: 'seg', style: 'margin:0 0 12px' },
-    tabs.map((t) => h('button', {
-      class: curTab === t.id ? 'on' : '',
-      onclick: () => { curTab = t.id; sound.play('tap'); renderContent(); },
-    }, t.name)));
-
-  const contentBox = h('div', { style: 'min-height:200px' });
-
-  function renderContent() {
-    contentBox.innerHTML = '';
-    // 更新tab高亮
-    [...tabBar.children].forEach((btn, i) => btn.classList.toggle('on', tabs[i].id === curTab));
-    if (curTab === 'overview') {
-      contentBox.append(
-        h('div', { class: 'card hi-card rise' },
-          h('div', { class: 'hi-date' },
-            h('span', null, new Date().getFullYear() + '年' + (new Date().getMonth() + 1) + '月' + new Date().getDate() + '日 · 周' + '一二三四五六日'[weekdayOf(dk) - 1]),
-            hol ? h('span', { class: 'tag tag-hol' }, hol + ' · 休') : info.makeup ? h('span', { class: 'tag tag-work' }, '调休上班') : null,
-            nh && !hol && nh.start > dk ? h('span', { class: 'tag' }, `距离${nh.name}还有 ${diffDay(dk, nh.start)} 天`) : null),
-          h('div', { class: 'hi-main' }, summary.tasks ? `今日已完成 ${summary.doneTasks}/${summary.tasks} 件` : '今天还没有安排，记一件小事就算数'),
-          h('div', { class: 'hi-sub' }, `今日积分 +${summary.points}/${summary.pointsCap} · 有效记录 ${summary.validEvents} 条`),
-          h('div', { class: 'bar' }, h('i', { style: `width:${Math.min(100, Math.round((summary.points / summary.pointsCap) * 100))}%` }))),
-        taskSection(undone, done, tplById, ctx),
-      );
-    } else if (curTab === 'habit') {
-      contentBox.append(
-        h('div', { class: 'card' },
-          h('div', { class: 'card-title' }, icon('task'), '今天要做的习惯',
-            h('button', { class: 'more', onclick: () => location.hash = '#/plan' }, '全部', icon('right'))),
-          habits.length ? (() => {
-            const due = habits.filter((x) => !x.paused && habitDueOn(x, dk));
-            if (!due.length) return h('div', { class: 'empty' }, '今天没有排班习惯，去计划页看看');
-            const strip = h('div', { class: 'habit-strip' });
-            for (const hb of due) {
-              const logId = logByHabit.get(hb.id);
-              strip.append(h('div', { class: 'habit-pill' },
-                h('button', {
-                  class: 'checkbtn' + (logId ? ' on' : ''), 'aria-label': hb.name,
-                  onclick: async () => {
-                    if (logId) await doHabitUndo(hb, dk); else await doHabitDone(hb, dk);
-                    ctx.rerender();
-                  },
-                }, icon('check')),
-                h('span', null, hb.name)));
-            }
-            return strip;
-          })() : h('div', { class: 'empty' }, '还没有习惯，', h('button', { class: 'act', onclick: () => location.hash = '#/plan' }, '去创建一个'))),
-        h('div', { class: 'card' },
-          h('div', { class: 'card-title' }, icon('quick'), '快捷记录',
-            h('button', { class: 'more', onclick: () => manageQuickButtons(ctx) }, '管理', icon('right'))),
-          h('div', { class: 'qbtns' },
-            quickButtons.map((q) => h('button', {
-              class: 'qbtn',
-              onclick: async () => {
-                sound.play('tap');
-                const res = await addQuickRecord({ category: q.category, minutes: q.minutes || null, count: q.count || null, title: q.label });
-                queueSettle([{ ic: 'quick', label: q.label, sub: q.minutes ? fmtMin(q.minutes) : catName(q.category), points: res.points }]);
-                ctx.rerender();
-              },
-            },
-              h('span', { class: 'qb-ic', style: `background:${catColor(q.category)}` }),
-              h('span', { class: 'qb-t' }, q.label),
-              h('span', { class: 'qb-s' }, q.minutes ? fmtMin(q.minutes) : q.count ? `×${q.count}` : catName(q.category))))),
-          h('div', { class: 'quick-journal' },
-            h('button', { class: 'btn btn-soft btn-sm', style: 'flex:1', onclick: quickRecordDialog }, icon('quick'), '记一件完成的事'))),
-      );
-    } else if (curTab === 'ledger') {
-      contentBox.append(
-        h('div', { class: 'card' },
-          h('div', { class: 'card-title' }, icon('ledger'), '快速记账',
-            h('button', { class: 'more', onclick: () => location.hash = '#/footprint' }, '账本', icon('right'))),
-          h('div', { class: 'qbtns' },
-            h('button', { class: 'qbtn', onclick: quickLedgerDialog },
-              h('span', { class: 'qb-ic', style: 'background:#C96868' }),
-              h('span', { class: 'qb-t' }, '支出')),
-            h('button', { class: 'qbtn', onclick: quickLedgerDialog },
-              h('span', { class: 'qb-ic', style: 'background:#6FA88B' }),
-              h('span', { class: 'qb-t' }, '收入'))),
-          h('div', { class: 'quick-journal' },
-            h('button', { class: 'btn btn-warn btn-sm', style: 'width:100%', onclick: quickLedgerDialog }, icon('ledger'), '记一笔'))),
-        h('div', { class: 'card' },
-          h('div', { class: 'card-title' }, icon('ledger'), '最近账本',
-            h('button', { class: 'more', onclick: () => location.hash = '#/footprint' }, '全部', icon('right'))),
-          h('div', { class: 'empty' }, '点击上方"记一笔"开始记账')),
-      );
-    } else {
-      contentBox.append(
-        h('div', { class: 'stat-row' },
-          h('button', { class: 'stat-cell', style: 'cursor:pointer', onclick: () => openFocus() },
-            h('div', { class: 'v', style: 'color:var(--primary-deep)' }, icon('focus')), h('div', { class: 'k' }, '开始专注')),
-          h('div', { class: 'stat-cell' }, h('div', { class: 'v num' }, String(weekDone)), h('div', { class: 'k' }, '本周有效天数')),
-          h('button', { class: 'stat-cell', style: 'cursor:pointer', onclick: () => location.hash = '#/footprint' },
-            h('div', { class: 'v num', style: 'color:var(--reward)' }, String(balance())), h('div', { class: 'k' }, '积分余额'))),
-        h('div', { class: 'card' },
-          h('div', { class: 'card-title' }, icon('badge'), '最近解锁的徽章',
-            h('button', { class: 'more', onclick: () => location.hash = '#/home' }, '收藏册', icon('right'))),
-          badgeRows.length ? h('div', { class: 'badge-mini-strip' },
-            badgeRows.sort((a, b) => b.ts - a.ts).slice(0, 3).map((r) => {
-              const b = BADGES.find((x) => x.id === r.badgeId);
-              if (!b) return null;
-              return h('div', { class: 'badge-mini' }, h('img', { 'data-badge': b.id, alt: b.name }), h('div', { style: 'min-width:0' }, h('div', { class: 't' }, b.name), h('div', { class: 's' }, b.series)));
-            })) : h('div', { class: 'empty' }, '完成第一件事，解锁第一枚徽章')),
-      );
-    }
+  // === 1. 宠物陪伴卡 ===
+  if (active && petDef) {
+    const petWrap = h('div', { class: 'pet-today-wrap', style: 'position:relative;width:140px;height:140px;margin:0 auto' });
+    try { petWrap.innerHTML = petSVG(active.petId, { stage: stage ? stage.n : 1 }); } catch(e) {}
+    const petCard = h('div', { class: 'card rise', style: 'text-align:center;padding:16px 14px 12px;margin-bottom:12px' },
+      petWrap,
+      h('div', { style: 'font-size:17px;font-weight:800;margin-top:6px' }, active.name || petDef.name),
+      h('div', { style: 'display:flex;gap:6px;justify-content:center;margin-top:3px;flex-wrap:wrap' },
+        h('span', { class: 'tag tag-pri' }, '陪伴中'),
+        stage ? h('span', { class: 'tag' }, stage.name) : null),
+      prog ? h('div', { class: 'bar', style: 'margin-top:10px' }, h('i', { style: `width:${Math.round(prog.ratio * 100)}%` })) : null,
+      h('div', { style: 'font-size:11.5px;color:var(--muted);margin-top:5px' },
+        prog && prog.next ? `距「${prog.next.name}」还差 ${prog.next.min - (active.growth || 0)}` : '已是最高阶段')
+    );
+    petWrap.addEventListener('click', () => {
+      sound.play('pet');
+      try { petAct(petWrap, 'touch'); } catch(e) {}
+      try { floatFx(petWrap, 'heart'); } catch(e) {}
+    });
+    view.append(petCard);
   }
 
-  view.append(tabBar, contentBox);
-  renderContent();
+  // === 2. 日期问候 ===
+  view.append(
+    h('div', { class: 'card hi-card rise' },
+      h('div', { class: 'hi-date' },
+        h('span', null, new Date().getFullYear() + '年' + (new Date().getMonth() + 1) + '月' + new Date().getDate() + '日 · 周' + '一二三四五六日'[weekdayOf(dk) - 1]),
+        hol ? h('span', { class: 'tag tag-hol' }, hol + ' · 休') : info.makeup ? h('span', { class: 'tag tag-work' }, '调休上班') : null,
+        nh && !hol && nh.start > dk ? h('span', { class: 'tag' }, `距${nh.name} ${diffDay(dk, nh.start)}天`) : null),
+      h('div', { class: 'hi-main' }, summary.tasks ? `今日已完成 ${summary.doneTasks}/${summary.tasks} 件` : '今天还没有安排，记一件小事就算数'),
+      h('div', { class: 'hi-sub' }, `今日积分 +${summary.points}/${summary.pointsCap} · 有效记录 ${summary.validEvents} 条`),
+      h('div', { class: 'bar' }, h('i', { style: `width:${Math.min(100, Math.round((summary.points / summary.pointsCap) * 100))}%` }))),
+  );
+
+  // === 3. 主记录按钮 ===
+  view.append(
+    h('button', { class: 'btn btn-primary btn-block rise', style: 'min-height:50px;font-size:16px;margin-bottom:12px;border-radius:999px',
+      onclick: () => { sound.play('tap'); quickRecordDialog(); } },
+      icon('plus'), '记一件完成的事'),
+  );
+
+  // === 4. 快捷记录 ===
+  view.append(
+    h('div', { class: 'card' },
+      h('div', { class: 'card-title' }, icon('quick'), '快捷记录',
+        h('button', { class: 'more', onclick: () => manageQuickButtons(ctx) }, '管理', icon('right'))),
+      h('div', { class: 'qbtns' },
+        quickButtons.map((q) => h('button', {
+          class: 'qbtn',
+          onclick: async () => {
+            sound.play('tap');
+            const res = await addQuickRecord({ category: q.category, minutes: q.minutes || null, count: q.count || null, title: q.label });
+            queueSettle([{ ic: 'quick', label: q.label, sub: q.minutes ? fmtMin(q.minutes) : catName(q.category), points: res.points }]);
+            ctx.rerender();
+          },
+        },
+          h('span', { class: 'qb-ic', style: `background:${catColor(q.category)}` }),
+          h('span', { class: 'qb-t' }, q.label),
+          h('span', { class: 'qb-s' }, q.minutes ? fmtMin(q.minutes) : q.count ? `×${q.count}` : catName(q.category))))),
+    ),
+  );
+
+  // === 5. 追踪中的徽章 ===
+  const unlockedIds = new Set(badgeRows.map((r) => r.badgeId));
+  const trackBadge = BADGES.find((b) => !unlockedIds.has(b.id));
+  if (trackBadge) {
+    view.append(
+      h('div', { class: 'card' },
+        h('div', { class: 'card-title' }, icon('badge'), '正在追踪',
+          h('button', { class: 'more', onclick: () => location.hash = '#/home' }, '收藏册', icon('right'))),
+        h('div', { style: 'display:flex;align-items:center;gap:12px' },
+          h('img', { src: badgeArt(trackBadge.id), alt: trackBadge.name, style: 'width:52px;height:52px;border-radius:16px;object-fit:cover;flex:none' }),
+          h('div', { style: 'flex:1;min-width:0' },
+            h('div', { style: 'font-weight:700;font-size:14px' }, trackBadge.name),
+            h('div', { style: 'font-size:12px;color:var(--muted);margin-top:2px' }, trackBadge.cond || ''))))),
+    );
+  }
+
+  // === 6. 今日任务 ===
+  view.append(taskSection(undone, done, tplById, ctx));
+
+  // === 7. 今日习惯 ===
+  view.append(
+    h('div', { class: 'card' },
+      h('div', { class: 'card-title' }, icon('task'), '今天的习惯',
+        h('button', { class: 'more', onclick: () => location.hash = '#/plan' }, '全部', icon('right'))),
+      habits.length ? (() => {
+        const due = habits.filter((x) => !x.paused && habitDueOn(x, dk));
+        if (!due.length) return h('div', { class: 'empty' }, '今天没有排班习惯');
+        const strip = h('div', { class: 'habit-strip' });
+        for (const hb of due) {
+          const logId = logByHabit.get(hb.id);
+          strip.append(h('div', { class: 'habit-pill' },
+            h('button', {
+              class: 'checkbtn' + (logId ? ' on' : ''), 'aria-label': hb.name,
+              onclick: async () => {
+                if (logId) await doHabitUndo(hb, dk); else await doHabitDone(hb, dk);
+                ctx.rerender();
+              },
+            }, icon('check')),
+            h('span', null, hb.name)));
+        }
+        return strip;
+      })() : h('div', { class: 'empty' }, '还没有习惯')),
+  );
+
   fillBadgeImgs(view);
 }
 
