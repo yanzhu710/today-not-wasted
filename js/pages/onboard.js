@@ -149,7 +149,4 @@ function icon2(name) {
   return el;
 }
 
-// 头像：选择 → 简单裁剪（拖动+缩放）→ 压缩保存（「我的」页也复用）
-export { cropAndSave, fillAvatar, clearAvatarCache } from '../core/avatar.js';
-// 头像URL缓存，避免重复创建ObjectURL
 }
