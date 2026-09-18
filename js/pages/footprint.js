@@ -383,6 +383,29 @@ function renderStats(box) {
     donutCard.append(legend);
   }
 
+  // === 近7天趋势柱状图 ===
+  const trendCard = h('div', { class: 'card' }, h('div', { class: 'card-title' }, '近7天记录趋势'));
+  const trendDays = [];
+  for (let i = 6; i >= 0; i--) {
+    const dk = addDaysKey(today, -i);
+    const count = S.dayCounts && S.dayCounts[dk] ? S.dayCounts[dk] : 0;
+    trendDays.push({ dk, count });
+  }
+  const maxCount = Math.max(...trendDays.map(d => d.count), 1);
+  const trendBars = h('div', { style: 'display:flex;align-items:flex-end;gap:8px;height:100px;margin-top:12px;padding:0 4px' });
+  for (const d of trendDays) {
+    const hPct = (d.count / maxCount) * 100;
+    const dayLabel = Number(d.dk.slice(8, 10));
+    trendBars.append(h('div', { style: 'flex:1;display:flex;flex-direction:column;align-items:center;gap:4px' },
+      h('div', { style: 'width:100%;display:flex;align-items:flex-end;height:80px' },
+        h('div', { style: `width:100%;height:${Math.max(hPct, 4)}%;background:var(--primary);border-radius:6px 6px 2px 2px;opacity:0.8` })),
+      h('span', { style: 'font-size:10px;color:var(--muted)' }, dayLabel + '日'),
+      h('span', { style: 'font-size:10px;color:var(--muted)' }, d.count + '条')
+    ));
+  }
+  trendCard.append(trendBars);
+  box.append(trendCard);
+
   // === 热力格（近30天） ===
   const heatCard = h('div', { class: 'card' }, h('div', { class: 'card-title' }, '近30天记录热力'));
   const daysSet = S.days || new Set();
