@@ -1,9 +1,9 @@
-export const APP_NAME = '今天没白过';
-export const APP_VERSION = '2.0.0';
+﻿export const APP_NAME = '浠婂ぉ娌＄櫧杩?;
+export const APP_VERSION = '2.1.0';
 export const APP_AUTHOR = 'yanzhu';
 export const RELEASE_HIGHLIGHTS = [
-  '今天页面全新改版：宠物陪伴卡 + 主记录按钮 + 快捷记录。',
-  '奶油纸底 + 墨绿手账视觉风格统一。',
-  '新增追踪徽章展示，首页直接看到正在追求的成就。',
-  '底部导航"家园"更名为"伙伴"。',
+  '浠婂ぉ椤甸潰鍏ㄦ柊鏀圭増锛氬疇鐗╅櫔浼村崱 + 涓昏褰曟寜閽?+ 蹇嵎璁板綍銆?,
+  '濂舵补绾稿簳 + 澧ㄧ豢鎵嬭处瑙嗚椋庢牸缁熶竴銆?,
+  '鏂板杩借釜寰界珷灞曠ず锛岄椤电洿鎺ョ湅鍒版鍦ㄨ拷姹傜殑鎴愬氨銆?,
+  '搴曢儴瀵艰埅"瀹跺洯"鏇村悕涓?浼欎即"銆?,
 ];

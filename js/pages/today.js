@@ -10,6 +10,7 @@ import { openFocus } from './focus.js';
 import { habitDueOn, habitFreqLabel } from './plan.js';
 import * as sound from '../core/sound.js';
 import { badgeArt } from '../core/art.js';
+import { openSharePanel } from '../core/share.js';
 
 const QUICK_DEFAULTS = [
   { id: 'q_walk', label: '散步', category: 'sport', minutes: 30 },

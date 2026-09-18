@@ -33,8 +33,8 @@ export function petSVG(petId, { equip = {}, pose = 'idle', stage = 1 } = {}) {
         else accFront += A[key]();
       }
     }
-    return `<svg class="pet-svg" viewBox="0 0 120 118" style="--pet-scale:${scale.toFixed(3)}" aria-label="${def.name}">
-      <g transform="translate(60,104) scale(var(--pet-scale)) translate(-60,-104)">
+    return `<svg class="pet-svg" viewBox="0 0 120 118" aria-label="${def.name}">
+      <g transform="translate(60,104) scale(${scale.toFixed(3)}) translate(-60,-104)">
         <ellipse cx="60" cy="109" rx="24" ry="7" fill="rgba(76,58,40,.12)"/>
         ${accBack}
         <image href="./assets/pets/${petId}.png" x="10" y="5" width="100" height="105" preserveAspectRatio="xMidYMid meet"/>
