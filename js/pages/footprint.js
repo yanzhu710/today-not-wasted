@@ -6,30 +6,129 @@ import { h, icon, todayKey, dateKey, parseKey, addDaysKey, addMonthsKey, daysInM
 import { dayInfo, holidayName, hasHolidayData, holidayDaysInMonth, nextHoliday, blocksOfYear } from '../core/holidays.js';
 import { moodArt } from '../core/art.js';
 import { openModal, formDlg, actionSheet, confirmDlg, queueSettle, toast } from '../core/fx.js';
-import { quickLedgerDialog } from './today.js';
+import { quickLedgerDialog, quickRecordDialog } from './today.js';
 import * as sound from '../core/sound.js';
 import { renderStatsView } from '../core/stats-view.js';
 import { isValidRecord, summarizeRecords, timestampDay } from '../core/record-summary.js';
 import { openSharePanel } from '../core/share.js';
+import { routeTabs } from '../ui/tabs.js';
 
-let curTab = 'cal';
 let curMonth = monthKeyOf(todayKey());
 const DOT_COLORS = { task: '#748F72', habit: '#6FA88B', quick: '#D78367', focus: '#7A8FB5', journal: '#C48FB0', ledger: '#D8A94D', checklist: '#9AA07B' };
 
 export async function renderFootprint(view, ctx) {
-  view.innerHTML = '';
-  const seg = h('div', { class: 'seg', style: 'margin-bottom:12px' },
-    [['cal', '月历'], ['tl', '时间线'], ['journal', '手账'], ['ledger', '账本'], ['stats', '统计'], ['review', '回顾']].map(([id, nm]) =>
-      h('button', { class: curTab === id ? 'on' : '', onclick: () => { curTab = id; sound.play('tap'); ctx.rerender(); } }, nm)));
-  view.append(seg);
-  const box = h('div');
+  const raw = ctx.routeParams?.get('tab') || 'timeline';
+  const legacy = { cal:'calendar', tl:'timeline', journal:'timeline', ledger:'timeline', stats:'data', review:'data' };
+  const tab = ['timeline','calendar','data'].includes(raw) ? raw : (legacy[raw] || 'timeline');
+  let filter = ctx.routeParams?.get('filter') || 'all';
+  if (raw === 'journal') filter = 'journal';
+  if (raw === 'ledger') filter = 'ledger';
+  if (!['all','quick','focus','journal','ledger'].includes(filter)) filter = 'all';
+  view.replaceChildren();
+  view.dataset.recordTab = tab;
+  view.append(routeTabs({
+    value: tab,
+    ariaLabel: '记录查看方式',
+    items: [
+      { id:'timeline', label:'记录', href:'footprint?tab=timeline' },
+      { id:'calendar', label:'日历', href:'footprint?tab=calendar' },
+      { id:'data', label:'数据', href:'footprint?tab=data' },
+    ],
+  }));
+  const box = h('div', { class:'record-content' });
   view.append(box);
-  if (curTab === 'cal') await renderCalendar(box, ctx);
-  else if (curTab === 'tl') await renderTimeline(box);
-  else if (curTab === 'journal') await renderJournal(box, ctx);
-  else if (curTab === 'ledger') await renderLedger(box, ctx);
-  else if (curTab === 'stats') await renderStats(box);
-  else await renderReview(box, ctx);
+  if (tab === 'timeline') await renderRecordFeed(box, ctx, filter);
+  else if (tab === 'calendar') await renderCalendar(box, ctx);
+  else {
+    box.append(h('section',{class:'card record-data-intro'},
+      h('div',{class:'card-title'},icon('stats'),'数据与回顾'),
+      h('p',{class:'row-sub'},'统计和回顾都只读取已经保存的记录。'),
+      h('button',{class:'btn btn-primary btn-sm',onclick:()=>openSharePanel()},icon('share'),'生成日 / 周分享')));
+    await renderStats(box);
+    await renderReview(box, ctx);
+  }
+}
+
+async function renderRecordFeed(box, ctx, filter = 'all') {
+  const [events, quickRows, focusRows, journalRows, ledgerRows, tasks, habits, habitLogs] = await Promise.all([
+    all('events'), all('quick_records'), all('focus_sessions'), all('journal'), all('ledger'), all('tasks'), all('habits'), all('habit_logs'),
+  ]);
+  const quickMap = new Map(quickRows.map(r=>[r.id,r]));
+  const focusMap = new Map(focusRows.map(r=>[r.id,r]));
+  const journalMap = new Map(journalRows.map(r=>[r.id,r]));
+  const ledgerMap = new Map(ledgerRows.map(r=>[r.id,r]));
+  const taskMap = new Map(tasks.map(r=>[r.id,r]));
+  const habitMap = new Map(habits.map(r=>[r.id,r]));
+  const habitLogMap = new Map(habitLogs.map(r=>[r.id,r]));
+
+  box.append(h('section',{class:'card record-home-card'},
+    h('div',{class:'card-title'},icon('book'),'所有已经发生的事，都在这里'),
+    h('p',{class:'row-sub'},'首页记录的小事、完成的任务、专注、手账和账目都会按日期汇到这一页。')));
+
+  box.append(routeTabs({
+    value: filter,
+    ariaLabel: '记录类型',
+    className: 'record-filter-tabs',
+    items: [
+      {id:'all',label:'全部',href:'footprint?tab=timeline&filter=all'},
+      {id:'quick',label:'小事',href:'footprint?tab=timeline&filter=quick'},
+      {id:'focus',label:'专注',href:'footprint?tab=timeline&filter=focus'},
+      {id:'journal',label:'手账',href:'footprint?tab=timeline&filter=journal'},
+      {id:'ledger',label:'账目',href:'footprint?tab=timeline&filter=ledger'},
+    ],
+  }));
+
+  const visible = events
+    .filter(e => isValidRecord(e))
+    .filter(e => filter === 'all' || e.kind === filter)
+    .sort((a,b) => (b.dateKey || '').localeCompare(a.dateKey || '') || (Number(b.ts)||0)-(Number(a.ts)||0))
+    .slice(0,260);
+  if (!visible.length) {
+    box.append(h('section',{class:'card'},h('div',{class:'empty'},filter==='all'?'还没有记录。先从「今天」记下一件真实的小事吧。':'这一类还没有记录。')));
+    return;
+  }
+
+  const card = h('section',{class:'card record-feed'});
+  let lastDate = '';
+  for (const e of visible) {
+    if (e.dateKey !== lastDate) {
+      lastDate = e.dateKey;
+      card.append(h('div',{class:'record-date-head'},
+        h('b',null,e.dateKey===todayKey()?'今天':fmtCN(e.dateKey)),
+        h('span',null,dayInfo(e.dateKey).weekend?'周末':'')));
+    }
+    const meta = recordMeta(e);
+    const row = h('div',{class:'record-feed-row'+(meta.click?' clickable':'')},
+      h('span',{class:'record-kind-icon'},icon(kindIcon(e.kind))),
+      h('div',{class:'record-feed-main'},
+        h('div',{class:'record-feed-title'},h('b',null,meta.title),h('time',null,new Date(e.ts||Date.now()).toTimeString().slice(0,5))),
+        meta.sub ? h('div',{class:'record-feed-sub'},meta.sub) : null,
+        meta.photoId ? h('img',{class:'journal-photo record-photo','data-photo':meta.photoId,alt:'手账照片',loading:'lazy'}) : null),
+      h('span',{class:'record-kind-label'},kindName(e.kind)));
+    if (meta.click) row.addEventListener('click', meta.click);
+    card.append(row);
+  }
+  box.append(card);
+  await fillPhotos(card);
+
+  function recordMeta(e) {
+    if (e.kind === 'quick') {
+      const r=quickMap.get(e.refId); return {title:r?.title||r?.note||catName(e.category)||'记录了一件小事',sub:[r?.minutes?fmtMin(r.minutes):'',r?.count?`×${r.count}`:'',r?.note||''].filter(Boolean).join(' · ')};
+    }
+    if (e.kind === 'focus') {
+      const r=focusMap.get(e.refId); return {title:`专注 ${fmtMin(e.minutes||r?.minutes||0)}`,sub:r?.note||''};
+    }
+    if (e.kind === 'journal') {
+      const r=journalMap.get(e.refId); return {title:r?.text||'留下了一条手账',sub:r?.mood?`心情 · ${moodById(r.mood)?.name||'已记录'}`:'',photoId:r?.photoId||null,click:r?()=>journalDialog(r,ctx):null};
+    }
+    if (e.kind === 'ledger') {
+      const r=ledgerMap.get(e.refId); const settingsCurrency='¥';
+      return {title:r?`${r.type==='in'?'收入':'支出'} · ${r.category}`:'记了一笔账',sub:r?`${fmtMoney(r.amount,settingsCurrency)}${r.note?' · '+r.note:''}`:''};
+    }
+    if (e.kind === 'task') { const r=taskMap.get(e.refId); return {title:r?.title||'完成了一项任务',sub:r?.category?catName(r.category):''}; }
+    if (e.kind === 'habit') { const log=habitLogMap.get(e.refId), hb=habitMap.get(log?.habitId); return {title:hb?.name||'完成了一次习惯',sub:hb?.category?catName(hb.category):''}; }
+    return {title:kindName(e.kind),sub:e.note|| (e.minutes?fmtMin(e.minutes):'')};
+  }
 }
 
 // ================= 月历 =================
@@ -113,8 +212,9 @@ async function daySheet(dk) {
     journalRow ? sec('手账', h('div', { class: 'row-title', style: 'font-size:13.5px' }, journalRow.text || '（只有心情）')) : null,
     outSum || inSum ? sec('账目', h('div', { class: 'row-title', style: 'font-size:13.5px' }, `支 ${fmtMoney(outSum)} · 收 ${fmtMoney(inSum)}`)) : null,
     h('div', { class: 'btn-row', style: 'margin-top:6px' },
-      h('button', { class: 'btn btn-soft btn-sm', onclick: () => { location.hash = '#/footprint'; } }, '记手账'),
-      h('button', { class: 'btn btn-soft btn-sm', onclick: () => quickLedgerDialog() }, '补记账')));
+      h('button', { class: 'btn btn-soft btn-sm', onclick: () => quickRecordDialog({dateKey:dk}) }, '记小事'),
+      h('button', { class: 'btn btn-soft btn-sm', onclick: () => journalDialog(null,null,dk) }, '补手账'),
+      h('button', { class: 'btn btn-soft btn-sm', onclick: () => quickLedgerDialog({dateKey:dk}) }, '补记账')));
   openModal({ title: fmtCNFull(dk) + (info.weekend ? '（周末）' : ''), content });
 }
 function kindName(k) {
@@ -124,7 +224,7 @@ function kindName(k) {
 // ================= 时间线 =================
 async function renderTimeline(box) {
   const events = await all('events');
-  const valid = events.filter((e) => e.kind !== 'pet' || true).sort((a, b) => b.ts - a.ts).slice(0, 200);
+  const valid = events.filter((e) => e.kind !== 'pet').sort((a, b) => b.ts - a.ts).slice(0, 200);
   const byDate = new Map();
   for (const e of valid) { if (!byDate.has(e.dateKey)) byDate.set(e.dateKey, []); byDate.get(e.dateKey).push(e); }
   const card = h('div', { class: 'card' });
@@ -166,7 +266,7 @@ async function renderJournal(box, ctx) {
       h('div', { class: 'row-main' },
         h('div', { class: 'row-sub' }, h('span', null, fmtCN(j.dateKey)), h('span', null, mood.name), j.category ? h('span', null, catName(j.category)) : null),
         j.text ? h('div', { class: 'row-title', style: 'white-space:normal;font-weight:500;margin-top:2px' }, j.text) : null,
-        j.photoId ? h('img', { class: 'journal-photo', style: 'margin-top:8px', 'data-photo': j.photoId, alt: '照片' }) : null),
+        j.photoId ? h('img', { class: 'journal-photo', style: 'margin-top:8px', 'data-photo': j.photoId, alt: '照片', loading:'lazy' }) : null),
       h('button', { class: 'iconbtn', style: 'width:34px;height:34px;font-size:16px', onclick: () => journalDialog(j, ctx) }, icon('edit')));
     card.append(row);
   }
@@ -176,13 +276,30 @@ async function renderJournal(box, ctx) {
 export async function fillPhotos(rootEl) {
   const { get } = await import('../core/db.js');
   for (const img of rootEl.querySelectorAll('img[data-photo]')) {
-    const row = await get('photos', img.dataset.photo).catch(() => null);
-    if (row) img.src = URL.createObjectURL(row.thumb || row.blob);
+    const photoId = img.dataset.photo;
+    const row = await get('photos', photoId).catch(() => null);
+    if (row) {
+      const url = URL.createObjectURL(row.blob || row.thumb);
+      img.addEventListener('load', () => URL.revokeObjectURL(url), { once:true });
+      img.src = url;
+      img.tabIndex = 0;
+      img.setAttribute('role', 'button');
+      img.setAttribute('aria-label', '查看大图');
+      img.addEventListener('click', () => openJournalPhoto(photoId));
+      img.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openJournalPhoto(photoId); } });
+    }
   }
 }
-export async function journalDialog(entry = null, ctx = null) {
+async function openJournalPhoto(photoId) {
+  const row = await get('photos', photoId).catch(() => null);
+  if (!row) { toast('这张照片暂时无法读取', { ic:'error' }); return; }
+  const url = URL.createObjectURL(row.blob || row.thumb);
+  const img = h('img', { class:'journal-photo-viewer', src:url, alt:'手账照片大图' });
+  openModal({ title:'手账照片', content:img, noPad:true, onClose:()=>URL.revokeObjectURL(url) });
+}
+export async function journalDialog(entry = null, ctx = null, presetDate = null) {
   const isNew = !entry;
-  const j = entry || { id: null, dateKey: todayKey(), mood: 'good', text: '', photoId: null, category: null, ts: null };
+  const j = entry || { id: null, dateKey: presetDate || todayKey(), mood: 'good', text: '', photoId: null, category: null, ts: null };
   const dateInp = h('input', { class: 'input', type: 'date', value: j.dateKey });
   const ta = h('textarea', { class: 'input', rows: '3', placeholder: '一句话记录今天（可只选心情）', maxlength: '500' });
   ta.value = j.text || '';
@@ -190,18 +307,55 @@ export async function journalDialog(entry = null, ctx = null) {
   const moodPick = h('div', { class: 'mood-pick' }, MOODS.map((m) => h('button', {
     class: m.id === mood ? 'on' : '', onclick: (e) => { mood = m.id; [...moodPick.children].forEach((x) => x.classList.remove('on')); e.currentTarget.classList.add('on'); sound.play('tap'); },
   }, h('img', { src: moodArt(m.id), alt: m.name }), m.name)));
-  let photoId = j.photoId || null;
-  const photoBtn = h('button', { class: 'btn btn-ghost btn-sm', onclick: async () => {
+  const originalPhotoId = j.photoId || null;
+  let photoId = originalPhotoId;
+  const tempPhotoIds = new Set();
+  let previewUrl = null;
+  const photoPreview = h('div', { class: 'journal-upload-preview' },
+    h('div', { class:'journal-upload-empty' }, icon('camera'), h('span',null,'还没有照片')));
+  async function refreshPhotoPreview() {
+    if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
+    photoPreview.replaceChildren();
+    if (!photoId) {
+      photoPreview.append(h('div',{class:'journal-upload-empty'},icon('camera'),h('span',null,'还没有照片')));
+      return;
+    }
+    const row = await get('photos', photoId).catch(()=>null);
+    if (!row) {
+      photoPreview.append(h('div',{class:'journal-upload-empty'},icon('error'),h('span',null,'照片暂时无法读取')));
+      return;
+    }
+    previewUrl = URL.createObjectURL(row.blob || row.thumb);
+    const img = h('img',{src:previewUrl,alt:'手账照片预览',tabindex:'0',role:'button','aria-label':'查看大图'});
+    img.addEventListener('click',()=>openJournalPhoto(photoId));
+    img.addEventListener('keydown',(e)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openJournalPhoto(photoId);}});
+    const remove = h('button',{class:'journal-photo-remove',type:'button','aria-label':'移除照片',onclick:async()=>{
+      const removed = photoId; photoId=null;
+      if (removed && tempPhotoIds.has(removed)) { tempPhotoIds.delete(removed); await del('photos', removed).catch(()=>{}); }
+      photoBtn.replaceChildren(icon('camera'),'选择照片');
+      refreshPhotoPreview();
+    }},icon('close'));
+    photoPreview.append(img, remove);
+  }
+  const photoBtn = h('button', { class: 'btn btn-ghost btn-sm journal-photo-button', onclick: async () => {
     const inp = h('input', { type: 'file', accept: 'image/*', style: 'display:none' });
     inp.addEventListener('change', async () => {
       const f = inp.files && inp.files[0];
       if (!f) return;
-      toast('正在压缩照片…', { ic: 'camera' });
-      photoId = await compressPhoto(f);
-      toast(photoId ? '照片已就绪' : '照片处理失败', { ic: photoId ? 'check' : 'error' });
+      photoBtn.disabled = true;
+      toast('正在处理照片…', { ic: 'camera' });
+      const nextId = await compressPhoto(f);
+      photoBtn.disabled = false;
+      if (!nextId) { toast('照片处理失败，请换一张重试', { ic: 'error' }); return; }
+      if (photoId && tempPhotoIds.has(photoId)) { const old=photoId; tempPhotoIds.delete(old); await del('photos',old).catch(()=>{}); }
+      photoId = nextId; tempPhotoIds.add(nextId);
+      photoBtn.replaceChildren(icon('camera'),'更换照片');
+      await refreshPhotoPreview();
+      toast('照片已就绪', { ic: 'check' });
     });
     document.body.append(inp); inp.click(); setTimeout(() => inp.remove(), 8000);
-  } }, icon('camera'), photoId ? '更换照片' : '加一张照片');
+  } }, icon('camera'), photoId ? '更换照片' : '选择照片');
+  refreshPhotoPreview();
   const catSel = h('select', { class: 'input' }, h('option', { value: '' }, '不分类'), CATS.map((c) => h('option', { value: c.id, selected: c.id === j.category }, c.name)));
   openModal({
     title: isNew ? '写手账' : '编辑手账',
@@ -209,23 +363,33 @@ export async function journalDialog(entry = null, ctx = null) {
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '日期（可补记往日）'), dateInp),
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '心情'), moodPick),
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '正文'), ta),
-      h('div', { class: 'field-row' }, photoBtn, h('div', { class: 'form-item', style: 'flex:1' }, h('span', { class: 'form-label' }, '分类'), catSel))),
+      h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '照片'), photoPreview),
+      h('div', { class: 'field-row journal-photo-actions' }, photoBtn, h('div', { class: 'form-item', style: 'flex:1' }, h('span', { class: 'form-label' }, '分类'), catSel))),
     actions: [
       isNew ? null : {
         label: '删除', cls: 'btn-danger', onClick: async (c) => {
-          if (await confirmDlg('删除手账', '这条手账和相关奖励会同步修正。', { danger: true, okLabel: '删除' })) { await deleteJournal(j); c(); ctx && ctx.rerender(); }
+          if (await confirmDlg('删除手账', '这条手账和相关奖励会同步修正。', { danger: true, okLabel: '删除' })) {
+            await deleteJournal(j);
+            for (const id of tempPhotoIds) await del('photos',id).catch(()=>{});
+            if (previewUrl) URL.revokeObjectURL(previewUrl);
+            c(); ctx && ctx.rerender();
+          }
         },
       },
-      { label: '取消', onClick: (c) => c() },
+      { label: '取消', onClick: async (c) => { for (const id of tempPhotoIds) await del('photos',id).catch(()=>{}); if (previewUrl) URL.revokeObjectURL(previewUrl); c(); } },
       {
         label: '保存', cls: 'btn-primary', onClick: async (c) => {
           if (!ta.value.trim() && !photoId && mood === j.mood && !isNew) { c(); return; }
-          if (!ta.value.trim() && !photoId) { toast('写一句话或加张照片吧', { ic: 'edit' }); return; }
           const res = await saveJournal({
             id: j.id || undefined, dateKey: dateInp.value || todayKey(), mood, text: ta.value.trim(),
             photoId, category: catSel.value || null, ts: j.ts,
           });
+          if (originalPhotoId && originalPhotoId !== photoId) await del('photos', originalPhotoId).catch(()=>{});
+          for (const id of [...tempPhotoIds]) if (id !== photoId) await del('photos',id).catch(()=>{});
+          tempPhotoIds.clear();
+          if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl=null; }
           if (res) queueSettle([res]);
+          toast('手账已保存到「记录」', { ic:'check' });
           c(); ctx && ctx.rerender();
           window.dispatchEvent(new CustomEvent('tjmbg:rerender'));
         },
@@ -235,16 +399,16 @@ export async function journalDialog(entry = null, ctx = null) {
 }
 async function compressPhoto(file) {
   try {
-    const img = await new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = URL.createObjectURL(file); });
+    const img = await new Promise((resolve, reject) => { const url=URL.createObjectURL(file); const i=new Image(); i.onload=()=>{URL.revokeObjectURL(url);resolve(i);}; i.onerror=(err)=>{URL.revokeObjectURL(url);reject(err);}; i.src=url; });
     const long = Math.max(img.width, img.height);
-    const ratio = Math.min(1, 1600 / long);
+    const ratio = Math.min(1, 2400 / long);
     const cv = h('canvas', { width: Math.round(img.width * ratio), height: Math.round(img.height * ratio) });
     cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
-    const blob = await new Promise((r) => cv.toBlob((b) => r(b), 'image/jpeg', 0.82));
-    const tr = Math.min(1, 320 / long);
+    const blob = await new Promise((r) => cv.toBlob((b) => r(b), 'image/jpeg', 0.9));
+    const tr = Math.min(1, 960 / long);
     const tv = h('canvas', { width: Math.round(img.width * tr), height: Math.round(img.height * tr) });
     tv.getContext('2d').drawImage(img, 0, 0, tv.width, tv.height);
-    const thumb = await new Promise((r) => tv.toBlob((b) => r(b), 'image/jpeg', 0.75));
+    const thumb = await new Promise((r) => tv.toBlob((b) => r(b), 'image/jpeg', 0.86));
     const id = uid('ph');
     const { put } = await import('../core/db.js');
     await put('photos', { id, blob, thumb });

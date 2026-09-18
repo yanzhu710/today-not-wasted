@@ -1,33 +1,95 @@
 // 今天没白过 · 「家园」页：家园场景 / 商城 / 背包 / 徽章收藏册与展示栏
 import { all, get, put, del, loadKV, saveKV, patchKV } from '../core/db.js';
 import { PETS, SHOP, SHOP_CATS, BADGES, BADGE_SERIES, badgeById, badgeRarity, stageOf, STAGES, shopById, isUnlocked, unlockText, POINTS } from '../core/catalog.js';
-import { purchaseItem, useConsumable, equipItem, petInteract, claimPet, savePetName, setActivePet, balance, stats, getActivePet, grantGrowth } from '../core/engine.js';
+import { purchaseItem, redeemCustomReward, useConsumable, usePetItem, equipItem, petInteract, claimPet, savePetName, setActivePet, balance, stats, getActivePet, grantGrowth } from '../core/engine.js';
 import { shopArt, badgeArt, setBadgeIndex } from '../core/art.js';
 import { renderHomeScene, petNode, petAct, floatFx, petSVG, HOME_SLOTS } from '../core/pets.js';
-import { h, icon, fmtMin, todayKey, fmtCN } from '../core/util.js';
+import { h, icon, fmtMin, todayKey, fmtCN, uid } from '../core/util.js';
 import { openModal, actionSheet, confirmDlg, formDlg, queueSettle, toast, burstAt, sparkleAt, pulse } from '../core/fx.js';
 import * as sound from '../core/sound.js';
+import { routeTabs } from '../ui/tabs.js';
 
-let curTab = 'home';
 let shopCat = 'food';
 let badgeFilter = { series: null, got: null };
 
 export async function renderHome(view, ctx) {
-  const requestedTab = ctx.routeParams?.get('tab');
-  if (['home','shop','bag','badges'].includes(requestedTab)) curTab = requestedTab;
-  view.innerHTML = '';
-  view.dataset.homeTab = curTab;
-  const seg = h('div', { class: 'seg', style: 'margin-bottom:12px' },
-    [['home', '伙伴'], ['shop', '商城'], ['bag', '背包'], ['badges', '徽章']].map(([id, nm]) =>
-      h('button', { class: curTab === id ? 'on' : '', onclick: () => { curTab = id; sound.play('tap'); location.hash = '#/home?tab=' + id; } }, nm)));
-  view.append(seg);
-  const routeCtx = { ...ctx, rerender: () => { if (ctx.routeParams) ctx.routeParams.set('tab', curTab); return ctx.rerender('home?tab=' + curTab); } };
+  const rawTab = ctx.routeParams?.get('tab') || 'home';
+  const legacy = { shop:'rewards', bag:'rewards' };
+  const tab = ['home','badges','rewards'].includes(rawTab) ? rawTab : (legacy[rawTab] || 'home');
+  let rewardSub = ctx.routeParams?.get('sub') || (rawTab === 'bag' ? 'owned' : 'shop');
+  if (!['shop','custom','owned'].includes(rewardSub)) rewardSub = 'shop';
+  view.replaceChildren();
+  view.dataset.homeTab = tab;
+  view.append(routeTabs({
+    value: tab,
+    ariaLabel: '伙伴页面',
+    items: [
+      { id:'home', label:'伙伴', href:'home?tab=home' },
+      { id:'badges', label:'徽章', href:'home?tab=badges' },
+      { id:'rewards', label:'奖励', href:'home?tab=rewards&sub=shop' },
+    ],
+  }));
   const box = h('div');
   view.append(box);
-  if (curTab === 'home') await renderHomeTab(box, routeCtx);
-  else if (curTab === 'shop') await renderShop(box, routeCtx);
-  else if (curTab === 'bag') await renderBag(box, routeCtx);
-  else await renderBadges(box, routeCtx);
+  const navigate = (nextTab, sub = null) => {
+    location.hash = '#/home?tab=' + nextTab + (sub ? '&sub=' + sub : '');
+  };
+  const routeCtx = { ...ctx, activeTab:tab, rewardSub, navigate, rerender:(spec)=>ctx.rerender(spec || ('home?tab='+tab+(tab==='rewards'?'&sub='+rewardSub:''))) };
+  if (tab === 'home') await renderHomeTab(box, routeCtx);
+  else if (tab === 'badges') await renderBadges(box, routeCtx);
+  else await renderRewardCenter(box, routeCtx, rewardSub);
+}
+
+async function renderRewardCenter(box, ctx, sub) {
+  box.append(h('section',{class:'card reward-center-head'},
+    h('div',{class:'card-title'},icon('gift'),'奖励中心',h('span',{class:'reward-balance num'},balance()+' 积分')),
+    h('p',{class:'row-sub'},'把认真生活换成一点喜欢的东西。宠物道具和你给自己的奖励都在这里。')));
+  box.append(routeTabs({
+    value: sub,
+    ariaLabel:'奖励分类',
+    className:'reward-subtabs',
+    items:[
+      {id:'shop',label:'道具',href:'home?tab=rewards&sub=shop'},
+      {id:'custom',label:'自定义奖励',href:'home?tab=rewards&sub=custom'},
+      {id:'owned',label:'已拥有',href:'home?tab=rewards&sub=owned'},
+    ],
+  }));
+  if (sub === 'custom') await renderCustomRewards(box, ctx);
+  else if (sub === 'owned') await renderBag(box, ctx);
+  else await renderShop(box, ctx);
+}
+
+async function renderCustomRewards(box, ctx) {
+  const rows = (await all('custom_rewards')).sort((a,b)=>(Number(b.createdAt)||0)-(Number(a.createdAt)||0));
+  const addBtn = h('button',{class:'btn btn-primary btn-sm',onclick:async()=>{
+    const v=await formDlg({title:'新增自定义奖励',fields:[
+      {key:'t',label:'奖励内容',type:'text',placeholder:'例如：看一场电影'},
+      {key:'c',label:'所需积分',type:'number',placeholder:'例如 80'},
+    ],submitLabel:'添加'});
+    if(!v?.t?.trim())return;
+    await put('custom_rewards',{id:uid('cr'),title:v.t.trim(),cost:Math.max(0,Number(v.c)||0),redeemedAt:null,fulfilledAt:null,doneAt:null,createdAt:Date.now()});
+    ctx.rerender('home?tab=rewards&sub=custom');
+  }},icon('plus'),'添加奖励');
+  box.append(h('div',{class:'reward-custom-actions'},addBtn));
+  if(!rows.length){box.append(h('section',{class:'card'},h('div',{class:'empty'},'还没有自定义奖励。给自己留一个值得期待的小盼头吧。')));return;}
+  const available=h('section',{class:'card'},h('div',{class:'card-title'},'可以兑换'));
+  const pending=h('section',{class:'card'},h('div',{class:'card-title'},'待兑现'));
+  const done=h('section',{class:'card'},h('div',{class:'card-title'},'已经享受'));
+  let na=0,np=0,nd=0;
+  for(const r of rows){
+    const fulfilled=!!(r.fulfilledAt||r.doneAt);
+    const redeemed=fulfilled||!!r.redeemedAt;
+    const row=h('div',{class:'reward-custom-row'},
+      h('div',{class:'row-main'},h('b',{class:'row-title'+(fulfilled?' done':'')},r.title),h('div',{class:'row-sub'},r.cost?`${r.cost} 积分`:'无需积分',fulfilled?' · 已完成':redeemed?' · 待兑现':'')),
+      fulfilled?null:redeemed?h('button',{class:'btn btn-soft btn-sm',onclick:async()=>{r.fulfilledAt=Date.now();r.doneAt=r.fulfilledAt;await put('custom_rewards',r);toast('已记下这份奖励',{ic:'check'});ctx.rerender('home?tab=rewards&sub=custom');}},'已经享受'):h('button',{class:'btn btn-primary btn-sm',onclick:async()=>{
+        const result=await redeemCustomReward(r.id);
+        if(result?.err){toast(result.err,{ic:'error'});return;}
+        toast('已兑换，放进「待兑现」',{ic:'gift'});ctx.rerender('home?tab=rewards&sub=custom');
+      }},r.cost?'兑换':'领取'),
+      h('button',{class:'iconbtn','aria-label':'删除奖励',onclick:async()=>{if(await confirmDlg('删除这条奖励？','已扣除的积分不会自动退回。',{danger:true,okLabel:'删除'})){await del('custom_rewards',r.id);ctx.rerender('home?tab=rewards&sub=custom');}}},icon('trash')));
+    if(fulfilled){done.append(row);nd++;} else if(redeemed){pending.append(row);np++;} else {available.append(row);na++;}
+  }
+  if(na)box.append(available); if(np)box.append(pending); if(nd)box.append(done);
 }
 
 function badgeFxColors(points = 10) {
@@ -58,7 +120,7 @@ async function renderHomeTab(box, ctx) {
   const S=stats()||{}, progress=stageProgressOf(active.growth||0);
   const { petFigure,petResponse } = await import('../ui/paper.js');
   box.classList.add('paper-companion','paper-reference-companion');
-  const go=tab=>{location.hash='#/home?tab='+tab;};
+  const go=(tab,sub=null)=>ctx.navigate(tab,sub);
 
   const tabs=h('div',{class:'ref-pet-switcher','aria-label':'选择伙伴'});
   for(const item of PETS){const owned=pets.some(p=>p.petId===item.petId);tabs.append(h('button',{
@@ -115,7 +177,7 @@ async function renderHomeTab(box, ctx) {
       if(kind==='feed'||kind==='play'){
         const category=kind==='feed'?'food':'toy';
         const available=(await all('inventory')).some(row=>row.qty>0&&shopById(row.itemId)?.cat===category);
-        if(!available){const agreed=await confirmDlg('背包里还没有'+(category==='food'?'食物':'玩具'),'可以去商城看看，用已有积分兑换。',{okLabel:'去商城'});if(agreed)go('shop');return;}
+        if(!available){const agreed=await confirmDlg('背包里还没有'+(category==='food'?'食物':'玩具'),'可以去商城看看，用已有积分兑换。',{okLabel:'去商城'});if(agreed)go('rewards','shop');return;}
         const { choosePetItem }=await import('../core/item-picker.js');const result=await choosePetItem(category);if(!result?.ok)return;
         text=kind==='feed'?`吃到了${result.item.name}，谢谢你。`:`一起玩${result.item.name}吧。`;motion=kind==='feed'?'eat':'play';
       }else{
@@ -146,12 +208,12 @@ async function renderHomeTab(box, ctx) {
     h('div',{class:'ref-polaroid'},h('div',{class:'ref-polaroid-pet'},petFigure(active)),h('small',null,`已经一起走过 ${togetherDays} 天`),h('b',null,realLifeLogs?`留下 ${realLifeLogs} 次成长记录`:'第一段回忆，等你来写')));
   box.append(h('div',{class:'ref-memory-grid'},badgeCard,memoryCard));
 
-  const props=h('section',{class:'card ref-props'},h('div',{class:'ref-card-head'},h('h2',null,'👜 小道具'),h('button',{class:'more',onclick:()=>go('bag')},'背包',icon('right'))),h('p',{class:'ref-props-sub'},'这些小物件能让相处更有趣～'));
+  const props=h('section',{class:'card ref-props'},h('div',{class:'ref-card-head'},h('h2',null,'👜 小道具'),h('button',{class:'more',onclick:()=>go('rewards','owned')},'背包',icon('right'))),h('p',{class:'ref-props-sub'},'这些小物件能让相处更有趣～'));
   const propsList=h('div',{class:'ref-prop-list'});props.append(propsList);box.append(props,h('p',{class:'paper-page-note'},'几天不见也没关系，成长和收藏都还在。'));
   async function refreshProps(){
     const rows=(await all('inventory')).filter(row=>row.qty>0&&['food','toy'].includes(shopById(row.itemId)?.cat)).slice(0,3);propsList.replaceChildren();
-    if(!rows.length){propsList.append(h('p',{class:'paper-empty'},'背包还是空的，已有积分可以兑换食物和玩具。'),h('button',{class:'btn btn-soft btn-sm',onclick:()=>go('shop')},'去看看道具'));return;}
-    for(const row of rows){const item=shopById(row.itemId);propsList.append(h('button',{class:'ref-prop',onclick:()=>go('bag')},h('img',{src:shopArt(item.id),alt:'',loading:'lazy'}),h('span',null,item.name),h('small',null,item.type==='consumable'?`×${row.qty}`:'永久')));}
+    if(!rows.length){propsList.append(h('p',{class:'paper-empty'},'背包还是空的，已有积分可以兑换食物和玩具。'),h('button',{class:'btn btn-soft btn-sm',onclick:()=>go('rewards','shop')},'去看看道具'));return;}
+    for(const row of rows){const item=shopById(row.itemId);propsList.append(h('button',{class:'ref-prop',onclick:()=>go('rewards','owned')},h('img',{src:shopArt(item.id),alt:'',loading:'lazy'}),h('span',null,item.name),h('small',null,item.type==='consumable'?`×${row.qty}`:'永久')));}
   }
   await refreshProps();
   function petMetric(ic,label,value){return h('div',{class:'ref-pet-metric'},h('span',null,icon(ic)),h('b',null,label),h('small',null,String(value)));}
@@ -169,12 +231,9 @@ async function renderShop(box, ctx) {
   const [inv, pets] = await Promise.all([all('inventory'), all('pets')]);
   const invMap = new Map(inv.map((i) => [i.itemId, i]));
   const ctxUn = { maxStage: S.petMaxStage || 1, badgeCount: S.badgeCount || 0, seriesComplete: S.seriesComplete || 0 };
-  const bal = balance();
-  const head = h('div', { class: 'card', style: 'padding:10px 14px;display:flex;align-items:center;gap:8px' },
-    h('span', { style: 'font-size:13px;color:var(--muted)' }, '积分余额'),
-    h('b', { class: 'num', style: 'font-size:18px;color:var(--reward)' }, String(bal)),
-    h('span', { style: 'flex:1' }),
-    h('button', { class: 'btn btn-ghost btn-sm', onclick: () => { curTab = 'bag'; ctx.rerender(); } }, icon('bag'), '背包'));
+  const head = h('div', { class: 'reward-shop-intro' },
+    h('div',null,h('b',null,'宠物道具'),h('span',null,'只保留真正能使用的食物和玩具。')),
+    h('button', { class: 'btn btn-ghost btn-sm', onclick: () => ctx.navigate('rewards','owned') }, icon('bag'), '已拥有'));
   const seg = h('div', { class: 'seg', style: 'margin-bottom:10px' },
     SHOP_CATS.map((c) => h('button', { class: shopCat === c.id ? 'on' : '', onclick: (e) => { shopCat = c.id; [...seg.children].forEach((x) => x.classList.remove('on')); e.currentTarget.classList.add('on'); sound.play('tap'); drawGrid(); } }, c.name)));
   const gridWrap = h('div');
@@ -246,10 +305,13 @@ async function renderBag(box, ctx) {
         h('img', { src: shopArt(item.id), style: 'width:44px;height:44px;border-radius:12px', alt: item.name }),
         h('div', { class: 'row-main' }, h('div', { class: 'row-title', style: 'font-size:13.5px' }, item.name), h('div', { class: 'row-sub' }, item.desc)),
         h('span', { class: 'qty num' }, `×${it.qty}`),
-        h('button', { class: 'btn btn-soft btn-sm', onclick: async () => { await useConsumable(item.id); await petInteract({ food: item.cat === 'food', toy: item.cat === 'toy', itemId: item.id }); sound.play('pet'); toast(`用掉了「${item.name}」`); ctx.rerender(); } }, '使用')));
+        h('button', { class: 'btn btn-soft btn-sm', onclick: async (e) => {
+          const btn=e.currentTarget; if(btn.disabled)return; btn.disabled=true;
+          try { const result=await usePetItem(item.id); if(result?.err){toast(result.err,{ic:'error'});return;} sound.play('pet'); toast(`用掉了「${item.name}」`); ctx.rerender(); }
+          finally { btn.disabled=false; }
+        } }, '使用')));
     } else {
       hasP = true;
-      const usable = ['food', 'toy', 'outfit'].includes(item.cat);
       cardP.append(h('div', { class: 'row-item inv-row' },
         h('img', { src: shopArt(item.id), style: 'width:44px;height:44px;border-radius:12px', alt: item.name }),
         h('div', { class: 'row-main' }, h('div', { class: 'row-title', style: 'font-size:13.5px' }, item.name), h('div', { class: 'row-sub' }, catLabel(item.cat))),
@@ -260,40 +322,20 @@ async function renderBag(box, ctx) {
   if (!hasP) cardP.append(h('div', { class: 'empty' }, '兑换的永久物品会出现在这里'));
   box.append(cardC, cardP,
     h('div', { class: 'form-hint', style: 'text-align:center;line-height:1.8' },
-      '家具与背景在「家园」的编辑里摆放；装扮在宠物装扮里穿戴。'));
+      '食物和玩具可以直接使用；旧家具与穿戴只保留历史收藏，不再提供新的操作入口。'));
 }
 function catLabel(cat) { return { food: '食物', toy: '玩具', outfit: '装扮', furniture: '家具', bg: '背景', display: '展示' }[cat] || cat; }
-function catLabelUse(cat) { return { toy: '玩耍', outfit: '穿戴', furniture: '摆放', bg: '设为背景', display: '展示' }[cat] || '查看'; }
+function catLabelUse(cat) { return cat === 'toy' ? '玩耍' : '历史收藏'; }
 async function usePerm(item, ctx) {
   if (item.cat === 'toy') {
+    const result=await usePetItem(item.id);
+    if(result?.err){toast(result.err,{ic:'error'});return;}
     sound.play('pet');
-    await petInteract({ toy: true, itemId: item.id });
     toast('和伙伴玩了一会儿', { ic: 'pet' });
     ctx.rerender();
     return;
   }
-  if (item.cat === 'outfit') { curTab = 'home'; ctx.rerender(); toast('在家园的「装扮」里穿戴', { ic: 'star' }); return; }
-  if (item.cat === 'bg') {
-    const layout = await loadKV('home_layout');
-    layout.bg = item.id;
-    await saveKV('home_layout', layout);
-    toast('背景已更换，去家园看看', { ic: 'home' });
-    ctx.rerender();
-    return;
-  }
-  // 家具/展示：选择槽位
-  const accept = item.cat === 'display' ? ['wall1', 'wall2', 'cabinet'] : ['bed', 'desk1', 'desk2', 'ground1', 'ground2', 'rug', 'wall1', 'wall2', 'cabinet'];
-  const layout = await loadKV('home_layout');
-  const items = HOME_SLOTS.filter((s) => accept.includes(s.key)).map((s) => ({
-    ic: 'home', label: s.name, sub: layout[s.key] && layout[s.key] !== item.id ? `当前：${(shopById(layout[s.key]) || {}).name}` : layout[s.key] === item.id ? '已在这里' : '空',
-    onClick: async () => {
-      layout[s.key] = layout[s.key] === item.id ? null : item.id;
-      await saveKV('home_layout', layout);
-      toast(layout[s.key] ? `已放到「${s.name}」` : '已收起');
-      ctx.rerender();
-    },
-  }));
-  await actionSheet(`摆放「${item.name}」`, items);
+  toast('这件旧物已作为历史收藏保留，当前版本暂不开放使用。', { ic: 'bag', ms: 3200 });
 }
 
 // ---- 徽章收藏册 ----

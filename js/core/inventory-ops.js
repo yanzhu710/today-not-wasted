@@ -38,3 +38,45 @@ export function consumeAtomic(itemId,petEvent=null){
     };
   });
 }
+
+// Custom real-life rewards use the same all-or-nothing rule as shop purchases.
+// The reward row is the idempotency guard, so rapid taps / multiple tabs cannot
+// charge twice for the same redemption.
+export function redeemCustomRewardAtomic(rewardId){
+  return new Promise((resolve,reject)=>{
+    const tx=db().transaction(['points','custom_rewards','events'],'readwrite');
+    let failure=null,result={err:'奖励兑换未完成'};
+    tx.oncomplete=()=>resolve(result);
+    tx.onabort=()=>reject(failure||tx.error||new Error('奖励兑换失败，积分未扣除'));
+    tx.onerror=()=>reject(tx.error||new Error('奖励兑换失败'));
+    const pointsReq=tx.objectStore('points').getAll();
+    pointsReq.onsuccess=()=>{
+      const bal=pointsReq.result.reduce((n,r)=>n+Number(r.delta||0),0);
+      const rewards=tx.objectStore('custom_rewards');
+      const req=rewards.get(rewardId);
+      req.onsuccess=()=>{
+        try {
+          const reward=req.result;
+          if(!reward){result={err:'这条奖励不存在或已经被删除'};return;}
+          if(reward.redeemedAt||reward.fulfilledAt||reward.doneAt){result={err:'这条奖励已经兑换过了'};return;}
+          const cost=Math.max(0,Number(reward.cost)||0);
+          if(bal<cost){result={err:'积分还不够'};return;}
+          const now=Date.now();
+          if(cost>0){
+            tx.objectStore('points').put({
+              id:uid('pt'),dedupe:`custom:${reward.id}:redeem`,ts:now,dateKey:todayKey(),
+              delta:-cost,reason:`兑换现实奖励「${reward.title}」`,kind:'purchase',cls:'purchase',sourceEventId:null,
+            });
+          }
+          const next={...reward,redeemedAt:now};
+          rewards.put(next);
+          tx.objectStore('events').put({
+            id:uid('ev'),ts:now,dateKey:todayKey(),kind:'purchase',refId:reward.id,
+            meta:{name:reward.title,customReward:true,cost},
+          });
+          result={ok:true,reward:next,balance:bal-cost,cost};
+        } catch(error){failure=error;tx.abort();}
+      };
+    };
+  });
+}

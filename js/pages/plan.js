@@ -1,26 +1,82 @@
 // 今天没白过 · 「计划」页：目标 / 习惯 / 清单 / 灵感（四个子标签）
 import { all, allByIndex, put, del, loadKV, saveKV, genId } from '../core/db.js';
 import { CATS, catName, catColor, CHECKLIST_TEMPLATES, INSPIRATIONS, POINTS } from '../core/catalog.js';
-import { doHabitDone, doHabitUndo, toggleMilestone, completeGoal, reopenGoal, completeChecklist, reopenChecklist, addQuickRecord } from '../core/engine.js';
+import { doTaskComplete, doTaskUndo, doHabitDone, doHabitUndo, toggleMilestone, completeGoal, reopenGoal, completeChecklist, reopenChecklist, addQuickRecord } from '../core/engine.js';
 import { h, icon, uid, todayKey, addDaysKey, weekdayOf, fmtMin, fmtCN } from '../core/util.js';
 import { openModal, formDlg, actionSheet, confirmDlg, queueSettle, toast } from '../core/fx.js';
 import * as sound from '../core/sound.js';
+import { routeTabs } from '../ui/tabs.js';
 
-let curTab = 'goals';
 export async function renderPlan(view, ctx) {
   const requested = ctx.routeParams?.get('tab');
-  if (['goals','habits','lists','insp'].includes(requested)) curTab = requested;
-  view.innerHTML = '';
-  const seg = h('div', { class: 'seg', style: 'margin-bottom:12px' },
-    [['goals', '目标'], ['habits', '习惯'], ['lists', '清单'], ['insp', '灵感']].map(([id, nm]) =>
-      h('button', { class: curTab === id ? 'on' : '', onclick: () => { curTab = id; sound.play('tap'); location.hash = '#/plan?tab=' + id; } }, nm)));
-  view.append(seg);
-  const box = h('div');
+  const tab = ['tasks','habits','goals','more'].includes(requested) ? requested : 'tasks';
+  view.replaceChildren();
+  view.dataset.planTab = tab;
+  view.append(routeTabs({
+    value: tab,
+    ariaLabel: '计划分类',
+    items: [
+      { id:'tasks', label:'任务', href:'plan?tab=tasks' },
+      { id:'habits', label:'习惯', href:'plan?tab=habits' },
+      { id:'goals', label:'目标', href:'plan?tab=goals' },
+      { id:'more', label:'更多', href:'plan?tab=more' },
+    ],
+  }));
+  const box = h('div', { class: 'plan-content' });
   view.append(box);
-  if (curTab === 'goals') await renderGoals(box, ctx);
-  else if (curTab === 'habits') await renderHabits(box, ctx);
-  else if (curTab === 'lists') await renderLists(box, ctx);
-  else renderInsp(box, ctx);
+  if (tab === 'tasks') await renderTasks(box, ctx);
+  else if (tab === 'habits') await renderHabits(box, ctx);
+  else if (tab === 'goals') await renderGoals(box, ctx);
+  else {
+    box.append(h('div',{class:'plan-more-intro card'},h('b',null,'清单与灵感'),h('span',null,'低频工具放在这里，不和每天要执行的任务抢位置。')));
+    await renderLists(box, ctx);
+    await renderInsp(box, ctx);
+  }
+}
+
+async function renderTasks(box, ctx) {
+  const dk = todayKey();
+  const { ensureInstances } = await import('./today.js');
+  await ensureInstances(dk);
+  const rows = (await all('tasks')).filter(t => !t.repeat);
+  rows.sort((a,b) => (a.dateKey || '').localeCompare(b.dateKey || '') || (a.createdAt||0)-(b.createdAt||0));
+  const todayRows = rows.filter(t => !t.done && t.dateKey === dk);
+  const overdue = rows.filter(t => !t.done && t.dateKey < dk);
+  const upcoming = rows.filter(t => !t.done && t.dateKey > dk);
+  const completed = rows.filter(t => t.done).sort((a,b)=>(b.doneAt||0)-(a.doneAt||0)).slice(0,12);
+
+  const head = h('section',{class:'card plan-task-head'},
+    h('div',{class:'card-title'},icon('task'),'任务',h('button',{class:'more',onclick:async()=>{const {taskDialog}=await import('./today.js');taskDialog();}},icon('plus'),'新建')),
+    h('div',{class:'plan-task-summary'},
+      h('div',null,h('b',{class:'num'},String(todayRows.length)),h('span',null,'今天待办')),
+      h('div',null,h('b',{class:'num'},String(upcoming.length)),h('span',null,'接下来')),
+      h('div',null,h('b',{class:'num'},String(completed.length)),h('span',null,'最近完成'))));
+  box.append(head);
+
+  const section = (title, list, note='') => {
+    const card = h('section',{class:'card plan-task-section'},h('div',{class:'card-title'},title,note?h('span',{class:'tag'},note):null));
+    if (!list.length) card.append(h('div',{class:'empty'},title==='今天'?'今天没有待办，留一点空白也很好。':'这里暂时是空的。'));
+    for (const task of list) card.append(planTaskRow(task, ctx));
+    box.append(card);
+  };
+  if (overdue.length) section('待处理', overdue, '之前未完成');
+  section('今天', todayRows);
+  section('接下来', upcoming.slice(0,30));
+  if (completed.length) section('最近完成', completed);
+}
+
+function planTaskRow(task, ctx) {
+  const openEdit = async () => { const { taskDialog } = await import('./today.js'); taskDialog(task); };
+  return h('div',{class:'plan-task-row'},
+    h('button',{class:'checkbtn'+(task.done?' on':''),'aria-label':task.done?'撤销完成':'完成任务',onclick:async()=>{
+      const result = task.done ? await doTaskUndo(task) : await doTaskComplete(task);
+      if (result && result.points != null) queueSettle([result]);
+      ctx.rerender('plan?tab=tasks');
+    }},icon('check')),
+    h('button',{class:'plan-task-main',onclick:openEdit},
+      h('b',{class:task.done?'done':''},task.title),
+      h('span',null,task.dateKey===todayKey()?'今天':fmtCN(task.dateKey),task.category?' · '+catName(task.category):'')),
+    h('button',{class:'iconbtn plan-task-edit','aria-label':'编辑任务',onclick:openEdit},icon('edit')));
 }
 
 // ---- 频率工具（今天页也复用）----

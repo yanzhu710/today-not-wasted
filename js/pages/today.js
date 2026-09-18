@@ -1,5 +1,5 @@
 // 今天没白过 · 「今天」页：宠物陪伴卡 / 主记录 / 快捷记录 / 追踪徽章 / 今日任务
-import { all, allByIndex, put, del, get, loadKV, saveKV } from '../core/db.js';
+import { all, allByIndex, put, del, get, loadKV } from '../core/db.js';
 import { CATS, catName, catColor, BADGES, PETS, stageOf, stageProgress, moodById } from '../core/catalog.js';
 import { petSVG, petAct, floatFx } from '../core/pets.js';
 import { doTaskComplete, doTaskUndo, deleteTask, addQuickRecord, doHabitDone, doHabitUndo, addLedgerEntry, todaySummary, balance } from '../core/engine.js';
@@ -17,21 +17,14 @@ function diffDay(a, b) {
   return Math.round((db - da) / 86400000);
 }
 
-const QUICK_DEFAULTS = [
-  { id: 'q_walk', label: '散步', category: 'sport', minutes: 30 },
-  { id: 'q_read', label: '阅读', category: 'study', minutes: 15 },
-  { id: 'q_cook', label: '做饭', category: 'cook' },
-  { id: 'q_tidy', label: '整理', category: 'tidy', minutes: 15 },
-];
 export async function renderToday(view, ctx) {
   const dk = todayKey();
   await ensureInstances(dk);
-  const [tasks, habits, appMeta, summary, quickCfg, todayLogs, pets, ledgerRows, journalRows] = await Promise.all([
+  const [tasks, habits, appMeta, summary, todayLogs, pets, ledgerRows, journalRows] = await Promise.all([
     all('tasks'), all('habits'), loadKV('app_meta'), todaySummary(),
-    loadKV('quick_buttons'), allByIndex('habit_logs', 'dateKey', dk), all('pets'),
+    allByIndex('habit_logs', 'dateKey', dk), all('pets'),
     allByIndex('ledger', 'dateKey', dk), allByIndex('journal', 'dateKey', dk),
   ]);
-  const quickButtons = Array.isArray(quickCfg) && quickCfg.length ? quickCfg : QUICK_DEFAULTS;
   const logByHabit = new Map(todayLogs.map(l => [l.habitId, l]));
   const tplById = new Map(tasks.filter(t => t.repeat).map(t => [t.id, t]));
   const todayTasks = tasks.filter(t => !t.repeat && t.dateKey === dk);
@@ -72,7 +65,7 @@ export async function renderToday(view, ctx) {
   }
 
   const primaryActions = [
-    ['quick','记一件小事','记录生活瞬间', async()=>quickRecordDialog()],
+    ['quick','记录','记下已经发生的小事', async()=>quickRecordDialog()],
     ['focus','专注','高效又专注', ()=>openFocus()],
     ['journal','手账','写下此刻心情', async()=> (await import('./footprint.js')).journalDialog()],
     ['ledger','记账','收支简单明了', ()=>quickLedgerDialog()],
@@ -81,18 +74,6 @@ export async function renderToday(view, ctx) {
     h('button', { class:`ref-action-card tone-${i}`, onclick:fn },
       h('span', { class:'ref-action-blob' }, icon(ic)), h('b',null,label), h('small',null,sub)))));
 
-  const quickInput = h('input', { class:'ref-quick-input', type:'text', maxlength:'36', placeholder:'例如：喝了一杯好喝的咖啡 ☕', 'aria-label':'快速记录今天' });
-  const quickSave = h('button', { class:'btn ref-quick-save', onclick:async()=>{
-    const title=quickInput.value.trim();
-    if(!title){ quickInput.focus(); toast('先写下一件小事吧',{ic:'quick'}); return; }
-    quickSave.disabled=true;
-    try{
-      const result=await addQuickRecord({ category:'other', title });
-      quickInput.value=''; queueSettle([{ic:'quick',label:title,sub:'已记进今天',points:result.points}]); await ctx.rerender();
-    } finally { quickSave.disabled=false; }
-  }}, icon('plus'),'记录');
-  quickInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){e.preventDefault();quickSave.click();} });
-  view.append(h('section',{class:'card ref-quick-bar'},h('label',null,'快速记录今天吧…'),h('div',null,quickInput,quickSave)));
 
   const overview = h('section',{class:'card ref-overview-card'},
     h('div',{class:'ref-card-head'},h('h2',null,'今日总览'),h('small',null,'每一份努力都算数 ✦')),
@@ -116,7 +97,7 @@ export async function renderToday(view, ctx) {
   view.append(h('div',{class:'ref-dashboard-grid'},badgeSlot,overview));
 
   const taskCard=h('section',{class:'card ref-compact-card ref-task-card'},
-    h('div',{class:'ref-card-head'},h('h2',null,'今日待办'),h('button',{class:'more',onclick:()=>taskDialog()},`${done.length}/${todayTasks.length} 已完成`,icon('right'))));
+    h('div',{class:'ref-card-head'},h('h2',null,'今日待办'),h('button',{class:'more',onclick:()=>{location.hash='#/plan?tab=tasks';}},`${done.length}/${todayTasks.length} 已完成`,icon('right'))));
   if(!todayTasks.length) taskCard.append(h('p',{class:'paper-empty'},'今天还没有待办。'));
   else {
     const shown=[...undone,...done].slice(0,5);
@@ -138,13 +119,8 @@ export async function renderToday(view, ctx) {
       }},icon('check')),
       h('span',{class:checked?'done':''},hb.name),h('small',null,habitFreqLabel(hb))));
   });
-  view.append(h('div',{class:'ref-lower-grid'},taskCard,habitCard));
-
-  const quickStrip=h('section',{class:'ref-quick-strip'},quickButtons.slice(0,4).map(q=>h('button',{onclick:async()=>{
-    const result=await addQuickRecord({category:q.category,minutes:q.minutes||null,count:q.count||null,title:q.label});
-    queueSettle([{ic:'quick',label:q.label,sub:q.minutes?fmtMin(q.minutes):catName(q.category),points:result.points}]); await ctx.rerender();
-  }},icon(({sport:'footprint',study:'plan',cook:'gift',tidy:'home'})[q.category]||'quick'),q.label)));
-  view.append(quickStrip,h('p',{class:'paper-page-note'},'今天没白过 · 把平凡的日子，过成喜欢的样子。'));
+  view.append(h('div',{class:'ref-lower-stack'},taskCard,habitCard));
+  view.append(h('p',{class:'paper-page-note'},'今天没白过 · 把平凡的日子，过成喜欢的样子。'));
 
   function overviewCell(ic,value,label){return h('div',{class:'ref-overview-cell'},h('span',{class:'ref-overview-icon'},icon(ic)),h('div',null,h('b',null,String(value)),h('small',null,label)));}
   function fmtFocusCompact(min){if(!min)return '0m';if(min<60)return `${min}m`;const h=Math.floor(min/60),r=min%60;return r?`${h}h${r}m`:`${h}h`;}
@@ -297,7 +273,8 @@ function repeatDue(rep, dk) {
 }
 
 // ---- 快捷记录弹窗 ----
-export async function quickRecordDialog() {
+export async function quickRecordDialog({ dateKey: recordDate = todayKey() } = {}) {
+  const dateInp = h('input', { class: 'input', type: 'date', value: recordDate });
   const nameInp = h('input', { class: 'input', placeholder: '例如：陪家人散步（可留空）' });
   const catSel = h('select', { class: 'input' }, CATS.map((c) => h('option', { value: c.id, selected: c.id === 'other' }, c.name)));
   const cntInp = h('input', { class: 'input', type: 'number', min: '1', placeholder: '次数（可选）' });
@@ -305,10 +282,11 @@ export async function quickRecordDialog() {
   const noteInp = h('input', { class: 'input', placeholder: '一句话备注（可选）' });
   const { formDlg } = await import('../core/fx.js');
   const v = await formDlg({
-    title: '记一件完成的事',
+    title: '记录一件小事',
     fields: [],
     submitLabel: '记录',
     extra: h('div', { class: 'form-list' },
+      h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '日期'), dateInp),
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '事项名称'), nameInp),
       h('div', { class: 'field-row' }, h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '分类'), catSel), h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '次数'), cntInp), h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '时长(分)'), minInp)),
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '备注'), noteInp)),
@@ -316,21 +294,22 @@ export async function quickRecordDialog() {
   if (!v) return;
   if (!cntInp.value && !minInp.value && !nameInp.value.trim()) { toast('至少填写名称、次数或时长之一', { ic: 'error' }); return; }
   const res = await addQuickRecord({
-    category: catSel.value, count: Number(cntInp.value) || null, minutes: Number(minInp.value) || null,
+    dateKey: dateInp.value || todayKey(), category: catSel.value, count: Number(cntInp.value) || null, minutes: Number(minInp.value) || null,
     note: noteInp.value.trim(), title: nameInp.value.trim() || null,
   });
   queueSettle([res]);
+  toast('已保存到「记录」里', { ic: 'check' });
   window.dispatchEvent(new CustomEvent('tjmbg:rerender'));
 }
 
 // ---- 快速记账弹窗 ----
-export async function quickLedgerDialog() {
+export async function quickLedgerDialog({ dateKey: presetDate = todayKey() } = {}) {
   const { LEDGER_OUT, LEDGER_IN } = await import('../core/catalog.js');
   let type = 'out';
   const amtInp = h('input', { class: 'input', type: 'number', min: '0', step: '0.01', inputmode: 'decimal', placeholder: '0.00' });
   const outSel = h('select', { class: 'input' }, LEDGER_OUT.map((c) => h('option', { value: c }, c)));
   const inSel = h('select', { class: 'input', style: 'display:none' }, LEDGER_IN.map((c) => h('option', { value: c }, c)));
-  const dateInp = h('input', { class: 'input', type: 'date', value: todayKey() });
+  const dateInp = h('input', { class: 'input', type: 'date', value: presetDate });
   const noteInp = h('input', { class: 'input', placeholder: '备注（可选）' });
   const seg = h('div', { class: 'seg' },
     h('button', { class: 'on', onclick: (e) => { type = 'out'; [...seg.children].forEach((x) => x.classList.remove('on')); e.currentTarget.classList.add('on'); outSel.style.display = ''; inSel.style.display = 'none'; } }, '支出'),
@@ -352,44 +331,11 @@ export async function quickLedgerDialog() {
           if (!amt || amt <= 0) { toast('请填写正确的金额', { ic: 'error' }); return; }
           const res = await addLedgerEntry({ type, amount: amt, category: (type === 'out' ? outSel : inSel).value, note: noteInp.value.trim(), dateKey: dateInp.value || todayKey() });
           if (res.points) queueSettle([res]);
+          toast('账目已保存到「记录」', { ic:'check' });
           c();
           window.dispatchEvent(new CustomEvent('tjmbg:rerender'));
         },
       },
     ],
   });
-}
-
-// ---- 快捷按钮管理 ----
-async function manageQuickButtons(ctx) {
-  const cfg = (await loadKV('quick_buttons')) || QUICK_DEFAULTS.map((q) => ({ ...q }));
-  const items = cfg.map((q) => ({
-    ic: 'quick', label: q.label, sub: `${catName(q.category)}${q.minutes ? ' · ' + fmtMin(q.minutes) : ''}${q.count ? ' · ×' + q.count : ''}`,
-    onClick: async () => {
-      const choice = await actionSheet(q.label, [
-        { ic: 'trash', label: '删除这个按钮', danger: true, onClick: async () => { const next = cfg.filter((x) => x.id !== q.id); await saveKV('quick_buttons', next); toast('已删除'); ctx.rerender(); } },
-      ]);
-    },
-  }));
-  items.push({
-    ic: 'plus', label: '添加快捷按钮', onClick: async () => {
-      const { formDlg } = await import('../core/fx.js');
-      const v = await formDlg({
-        title: '添加快捷按钮',
-        fields: [
-          { key: 'label', label: '按钮名称', type: 'text', placeholder: '例如：拉伸', required: true },
-          { key: 'category', label: '生活分类', type: 'select', value: 'health', options: CATS.map((c) => ({ value: c.id, label: c.name })) },
-          { key: 'minutes', label: '默认时长（分钟，可选）', type: 'number', placeholder: '如 15' },
-          { key: 'count', label: '默认次数（可选）', type: 'number', placeholder: '如 1' },
-        ],
-        submitLabel: '添加',
-      });
-      if (!v || !v.label.trim()) return;
-      cfg.push({ id: uid('qb'), label: v.label.trim().slice(0, 6), category: v.category, minutes: Number(v.minutes) || null, count: Number(v.count) || null });
-      await saveKV('quick_buttons', cfg);
-      toast('已添加到快捷记录');
-      ctx.rerender();
-    },
-  });
-  await actionSheet('管理快捷按钮', items);
 }

@@ -21,16 +21,26 @@ export async function openFocus() {
   let started = !isNew; // 恢复中的会话视为已开始
   let optRow = null;
 
+  const [pets, appMeta] = await Promise.all([all('pets'), loadKV('app_meta')]);
+  const activePet = pets.find(p => p.petId === appMeta.activePet) || pets[0] || null;
+  const { petFigure } = await import('../ui/paper.js');
   const timeEl = h('div', { class: 'focus-time num' }, '00:00');
   const stateEl = h('div', { class: 'focus-state' }, '');
-  const ctrlRow = h('div', { class: 'btn-row', style: 'margin-top:14px' });
-  const linkInfo = h('div', { class: 'form-hint', style: 'text-align:center;margin-top:6px' }, s.linkLabel ? `正在为「${s.linkLabel}」计时` : '未关联任务/习惯/目标，也可直接专注');
-
-  const wrap = h('div', null,
-    h('div', { class: 'focus-display' }, timeEl, stateEl, linkInfo),
+  const ctrlRow = h('div', { class: 'btn-row focus-controls' });
+  const linkInfo = h('div', { class: 'focus-link-info' }, s.linkLabel ? `正在为「${s.linkLabel}」计时` : '不关联任务也没关系，专心做眼前这一件事');
+  const pet = activePet ? petFigure(activePet) : h('div',{class:'focus-pet-fallback'},icon('pet'));
+  const wrap = h('div', { class:'focus-paper' },
+    h('div',{class:'focus-scene'},
+      h('span',{class:'focus-moon','aria-hidden':'true'}),
+      h('span',{class:'focus-leaf focus-leaf-a','aria-hidden':'true'}),
+      h('span',{class:'focus-leaf focus-leaf-b','aria-hidden':'true'}),
+      h('div',{class:'focus-pet'},pet),
+      h('div',{class:'focus-scene-copy'},h('b',null,'把这一小段时间，留给自己'),h('span',null,'慢一点，也是在前进。'))),
+    h('div',{class:'focus-dial'},timeEl,stateEl),
+    linkInfo,
     ctrlRow,
-    h('div', { class: 'form-hint', style: 'text-align:center;margin-top:12px;line-height:1.7' },
-      '少于 5 分钟不计为有效专注；15/30/60 分钟有更高奖励。计时期间可以离开页面，时间照常累计。'));
+    h('div', { class: 'form-hint focus-hint' },
+      '少于 5 分钟不计为有效专注；计时期间可以离开页面，时间仍会继续累计。'));
 
   const modal = openModal({ title: s.done ? '专注完成待确认' : isNew ? '开始专注' : '专注进行中', content: wrap });
   modal.body.parentElement && null;

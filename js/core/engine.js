@@ -4,7 +4,7 @@ import { put, get, del, all, allByIndex, getByIndex, atomically, loadKV, saveKV,
 import { BADGES, POINTS, GROWTH, STAGES, stageOf, PETS, shopById, catName, isUnlocked, unlockText } from './catalog.js';
 import { todayKey, dateKey, weekKeyOf, monthKeyOf, uid, fmtMin, debounce } from './util.js';
 import { VALID_KINDS, isLifeEvent, aggregatePeriod } from './analytics.js';
-import { buyAtomic, consumeAtomic } from './inventory-ops.js';
+import { buyAtomic, consumeAtomic, redeemCustomRewardAtomic } from './inventory-ops.js';
 import * as fx from './fx.js';
 import * as sound from './sound.js';
 
@@ -245,6 +245,20 @@ export async function saveJournal(entry) {
     const p = prior.length ? 0 : await grantPoints({ dedupe: `journal:${entry.id}`, delta: POINTS.journal.delta, reason: '保存手账', kind: 'journal', dateKey: entry.dateKey, sourceEventId: ev.id });
     const g = prior.length ? 0 : await grantGrowth(GROWTH.journalFirst, { reason: '写手账', dateKey: entry.dateKey });
     rewards = { points: p, growth: g, title: '保存手账', ic: 'journal', kind: 'journal' };
+  } else {
+    // Editing a journal entry must also move/update its timeline event. Keep the
+    // original event id so the original reward ledger remains linked and is not re-awarded.
+    const evs = (await allByIndex('events', 'refId', entry.id)).filter((e) => e.kind === 'journal');
+    if (evs.length) {
+      for (const ev of evs) {
+        ev.dateKey = entry.dateKey;
+        ev.category = entry.category || null;
+        ev.meta = { ...(ev.meta || {}), photo: !!entry.photoId };
+        await put('events', ev);
+      }
+    } else {
+      await addEvent({ kind: 'journal', refId: entry.id, category: entry.category || null, dateKey: entry.dateKey, meta: { photo: !!entry.photoId } });
+    }
   }
   statsDirty();
   return rewards;
@@ -323,6 +337,17 @@ export async function confirmReview(type, key) {
 }
 
 // ---- 商城（原子购买：扣分与入库同事务）----
+export async function redeemCustomReward(rewardId) {
+  const result = await redeemCustomRewardAtomic(rewardId);
+  if (result?.ok) {
+    _bal = result.balance;
+    sound.play('purchase');
+    statsDirty();
+    emit();
+  }
+  return result;
+}
+
 export async function purchaseItem(requested) {
   const item = shopById(requested?.id);
   if (!item || !Number.isFinite(item.price) || item.price < 0) return { err: '商品无效' };

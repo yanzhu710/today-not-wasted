@@ -18,7 +18,7 @@ let deferredInstallPrompt = null;
 const NAVS = [
   { id: 'today', name: '今天', ic: 'today', load: () => import('./pages/today.js').then(m => m.renderToday) },
   { id: 'plan', name: '计划', ic: 'plan', load: () => import('./pages/plan.js').then(m => m.renderPlan) },
-  { id: 'footprint', name: '足迹', ic: 'book', load: () => import('./pages/footprint.js').then(m => m.renderFootprint) },
+  { id: 'footprint', name: '记录', ic: 'book', load: () => import('./pages/footprint.js').then(m => m.renderFootprint) },
   { id: 'home', name: '伙伴', ic: 'pet', load: () => import('./pages/home.js').then(m => m.renderHome) },
   { id: 'mine', name: '我的', ic: 'mine', load: () => import('./pages/mine.js').then(m => m.renderMine) },
 ];
@@ -63,7 +63,7 @@ function applyTheme() {
   document.documentElement.dataset.theme = settings.theme === 'dark' ? 'dark' : '';
   document.body.classList.toggle('light-motion', settings.motion === 'off');
   const meta = qs('meta[name="theme-color"]');
-  if (meta) meta.content = settings.theme === 'dark' ? '#22252B' : '#F7F3EA';
+  if (meta) meta.content = settings.theme === 'dark' ? '#18211D' : '#F7F3EA';
 }
 export function refreshSettings() { return (async () => { settings = await loadKV('settings'); applyTheme(); sound.setMuted(settings.muted); sound.setVolume(settings.volume); fx.configure({ motion: settings.motion }); })(); }
 export function getSettings() { return settings; }
@@ -164,7 +164,7 @@ function renderTopbar(nav) {
     bar.append(
       h('div',{class:'ref-brand'},h('div',{class:'ref-brand-title'},'今天没白过',h('span',{class:'ref-paw-mark','aria-hidden':'true'},'•')),h('div',{class:'ref-brand-sub'},'有你陪着，每天都是好日子～')),
       h('div',{class:'ref-top-actions'},
-        h('button',{class:'ref-top-square',onclick:()=>route('home?tab=badges')},icon('book'),h('span',null,'成长记录')),
+        h('button',{class:'ref-top-square',onclick:()=>route('home?tab=badges')},icon('badge'),h('span',null,'徽章')),
         h('button',{class:'ref-top-square',onclick:()=>route('mine')},icon('settings'),h('span',null,'设置'))));
   } else {
     bar.append(...[h('div', { class: 'top-title' }, nav.name), hol ? h('span', { class: 'chip chip-holiday' }, hol) : null, pts, muteBtn].filter(Boolean));
@@ -189,12 +189,11 @@ export async function toggleMute() {
 async function openPlusSheet() {
   const { actionSheet } = await import('./core/fx.js');
   await actionSheet('记一笔今天', [
-    { ic: 'quick', label: '记一件完成的事', sub: '事情已经做完，直接记下来', onClick: () => import('./pages/today.js').then((m) => m.quickRecordDialog()) },
+    { ic: 'quick', label: '记录一件小事', sub: '已经发生的事，统一放进「记录」', onClick: () => import('./pages/today.js').then((m) => m.quickRecordDialog()) },
     { ic: 'task', label: '新建任务', onClick: () => import('./pages/today.js').then((m) => m.taskDialog()) },
     { ic: 'focus', label: '开始专注', onClick: () => import('./pages/focus.js').then(m => m.openFocus()).catch(e => { console.error(e); fx.toast('专注计时打开失败，请重试',{ic:'error'}); }) },
     { ic: 'ledger', label: '记一笔', onClick: () => import('./pages/today.js').then((m) => m.quickLedgerDialog()) },
-    { ic: 'journal', label: '写一句', onClick: () => import('./pages/footprint.js').then((m) => m.journalDialog()) },
-    { ic: 'heart', label: '记录心情', onClick: () => import('./pages/footprint.js').then((m) => m.journalDialog({ moodOnly: true })) },
+    { ic: 'journal', label: '写手账 / 记心情', onClick: () => import('./pages/footprint.js').then((m) => m.journalDialog()) },
   ]);
 }
 
@@ -217,7 +216,7 @@ function globalListeners() {
   window.addEventListener('tjmbg:installprompt', () => { if (shellBuilt && currentRoute === 'mine') route('mine'); });
   // 数据变化 → 刷新积分显示与当前页
   window.addEventListener(DATA_EVENT, () => { refreshTopbarPoints(); });
-  window.addEventListener('tjmbg:rerender', () => { if (shellBuilt) route(currentRoute); });
+  window.addEventListener('tjmbg:rerender', () => { if (shellBuilt) route(activeRouteSpec || currentRoute); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && shellBuilt && !document.querySelector('.modal-back.show') && !document.activeElement?.matches('input,textarea,select')) route(activeRouteSpec || currentRoute); });
 }
 

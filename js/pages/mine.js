@@ -1,8 +1,8 @@
 // 今天没白过 · 「我的」页：个人资料 / 积分明细 / 自定义奖励 / 设置 / 备份与数据管理 / 关于
 import { all, get, put, del, count, loadKV, saveKV, patchKV, snapshotData, restoreData, mediaIds, clearEverything, SCHEMA_VERSION, DB_NAME } from '../core/db.js';
 import { POINTS, GROWTH, BADGES } from '../core/catalog.js';
-import { balance, stats, clearAllForReset, grantOnce, recomputeStats, confirmReview } from '../core/engine.js';
-import { h, icon, todayKey, fmtCN, fmtMoney, uid } from '../core/util.js';
+import { balance, stats, clearAllForReset, recomputeStats, confirmReview } from '../core/engine.js';
+import { h, icon, todayKey, fmtCN, fmtMoney } from '../core/util.js';
 import { openModal, formDlg, actionSheet, confirmDlg, toast, configure } from '../core/fx.js';
 import { makeZip, readZip } from '../core/zip.js';
 // 动态导入main.js的函数，避免循环导入
@@ -12,10 +12,11 @@ import * as sound from '../core/sound.js';
 
 export async function renderMine(view, ctx) {
   const { refreshSettings, setProfile, canInstallApp, promptInstallApp } = await import('../main.js');
-  const [profile, settings, appMeta, S, taskN, photoN, journalN] = await Promise.all([
+  const [profile, settings, appMeta, pets, S, taskN, photoN, journalN] = await Promise.all([
     loadKV('profile'),
     loadKV('settings'),
     loadKV('app_meta'),
+    all('pets'),
     Promise.resolve(stats() || {}),
     count('tasks').catch(() => 0),
     count('photos').catch(() => 0),
@@ -28,7 +29,7 @@ export async function renderMine(view, ctx) {
 
   // 资料卡
   const avatarEl = profile.avatarId ? h('div', { class: 'avatar', style: 'width:64px;height:64px;overflow:hidden' }) : h('div', { class: 'avatar-fb', style: 'width:64px;height:64px;font-size:22px' }, (profile.nickname || profile.account || '友')[0]);
-  const profileCard = h('div', { class: 'card', style: 'display:flex;align-items:center;gap:14px' },
+  const profileCard = h('div', { class: 'card mine-profile-card', style: 'display:flex;align-items:center;gap:14px' },
     avatarEl,
     h('div', { class: 'row-main' },
       h('div', { style: 'font-size:17px;font-weight:800' }, profile.nickname || profile.account || '未设置'),
@@ -44,46 +45,13 @@ export async function renderMine(view, ctx) {
       h('div', { class: 'stat-cell' }, h('div', { class: 'v num', style: 'color:var(--reward)' }, String(bal)), h('div', { class: 'k' }, '当前余额')),
       h('div', { class: 'stat-cell' }, h('div', { class: 'v num' }, `${S.badgeCount || 0}/120`), h('div', { class: 'k' }, '徽章')),
       h('div', { class: 'stat-cell' }, h('div', { class: 'v num' }, String(S.focusMin || 0)), h('div', { class: 'k' }, '专注分钟'))),
-    bal < 0 ? h('div', { class: 'form-hint', style: 'margin-top:8px;color:var(--accent)' }, `有 ${-bal} 待抵扣积分：撤销产生的差额将由之后的积分自动抵扣，已兑换的物品不受影响。`) : null);
+    bal < 0 ? h('div', { class: 'form-hint', style: 'margin-top:8px;color:var(--accent)' }, `有 ${-bal} 待抵扣积分：撤销产生的差额将由之后的积分自动抵扣，已兑换的物品不受影响。`) : null,
+    h('button',{class:'btn btn-soft btn-sm mine-reward-link',onclick:()=>{location.hash='#/home?tab=rewards&sub=custom';}},icon('gift'),'去奖励中心'));
 
-  // 自定义现实奖励
-  const rewardCard = h('div', { class: 'card' },
-    h('div', { class: 'card-title' }, icon('gift'), '自定义现实奖励',
-      h('button', { class: 'more', onclick: async () => {
-        const v = await formDlg({
-          title: '新增现实奖励',
-          fields: [
-            { key: 't', label: '奖励内容', type: 'text', placeholder: '例如：完成目标后看一场电影' },
-            { key: 'c', label: '所需积分（可选，用积分兑换）', type: 'number', placeholder: '如 100' },
-          ],
-          submitLabel: '添加',
-        });
-        if (!v || !v.t.trim()) return;
-        await put('custom_rewards', { id: uid('cr'), title: v.t.trim(), cost: Number(v.c) || 0, doneAt: null, createdAt: Date.now() });
-        ctx.rerender();
-      } }, icon('plus'), '添加')));
-  const rewards = await all('custom_rewards');
-  if (!rewards.length) rewardCard.append(h('div', { class: 'empty' }, '给自己定一个现实奖励，系统只记录状态，不负责兑现'));
-  for (const r of rewards) {
-    rewardCard.append(h('div', { class: 'row-item' },
-      h('div', { class: 'row-main' },
-        h('div', { class: 'row-title', style: 'font-size:13.5px' + (r.doneAt ? ' done' : '') }, r.title),
-        h('div', { class: 'row-sub' }, r.cost ? h('span', { class: 'num' }, `${r.cost} 积分`) : h('span', null, '达标后自取'), r.doneAt ? h('span', null, `已兑换 ${fmtCN(new Date(r.doneAt).toISOString().slice(0, 10))}`) : null)),
-      !r.doneAt && r.cost ? h('button', { class: 'btn btn-soft btn-sm', onclick: async () => {
-        if (balance() < r.cost) { toast('积分还不够', { ic: 'error' }); return; }
-        await grantOnce('custom:' + r.id + ':' + Date.now(), { delta: -r.cost, reason: `兑换现实奖励「${r.title}」`, kind: 'purchase', cls: 'purchase' });
-        r.doneAt = Date.now();
-        await put('custom_rewards', r);
-        sound.play('purchase');
-        toast('已兑换，去享受吧');
-        ctx.rerender();
-      } }, '兑换') : null,
-      !r.doneAt && !r.cost ? h('button', { class: 'btn btn-soft btn-sm', onclick: async () => { r.doneAt = Date.now(); await put('custom_rewards', r); toast('恭喜，记录已更新'); ctx.rerender(); } }, '标记完成') : null,
-      h('button', { class: 'iconbtn', style: 'width:34px;height:34px;font-size:16px', onclick: async () => { await del('custom_rewards', r.id); ctx.rerender(); } }, icon('trash'))));
-  }
+  // 自定义奖励已并入「伙伴 → 奖励」，这里保持个人与设置页的职责单一。
 
   // 设置
-  const setCard = h('div', { class: 'card' },
+  const setCard = h('div', { class: 'card mine-settings-card' },
     h('div', { class: 'card-title' }, icon('settings'), '外观与体验'),
     setRow('主题', h('div', { class: 'seg', style: 'width:190px' },
       h('button', { class: settings.theme !== 'dark' ? 'on' : '', onclick: async (e) => { e.currentTarget.parentElement.querySelectorAll('button').forEach((b, i) => b.classList.toggle('on', i === 0)); await patchKV('settings', { theme: 'warm' }); await refreshSettings(); } }, '温暖手账'),
@@ -169,7 +137,15 @@ export async function renderMine(view, ctx) {
       h('div', { class: 'form-hint', style: 'margin-top:8px;line-height:1.9' },
         '数据仅保存在本机浏览器（IndexedDB），不上传任何服务器；不包含云端账户、支付与广告。节假日与调休数据来自国务院办公厅通知。')));
 
-  view.append(profileCard, ptsCard, rewardCard, setCard, dataCard, installCard, aboutCard);
+  let encourageCard = null;
+  const activePet = pets.find(p => p.petId === appMeta.activePet) || pets[0];
+  if (activePet) {
+    const { petFigure } = await import('../ui/paper.js');
+    encourageCard = h('section',{class:'card mine-encourage-card'},
+      h('div',{class:'mine-encourage-copy'},h('b',null,'生活或许不完美，'),h('span',null,'但依然值得期待。')),
+      h('div',{class:'mine-encourage-pet'},petFigure(activePet)));
+  }
+  view.append(...[profileCard, ptsCard, setCard, dataCard, installCard, encourageCard, aboutCard].filter(Boolean));
 }
 function setRow(label, ctrl) {
   return h('div', { class: 'row-item' }, h('span', { style: 'font-size:14px;font-weight:600;flex:none' }, label), ctrl);
