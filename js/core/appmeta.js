@@ -1,5 +1,5 @@
-﻿export const APP_NAME = '今天没白过';
-export const APP_VERSION = '2.2.0';
+export const APP_NAME = '今天没白过';
+export const APP_VERSION = '2.3.0';
 export const APP_AUTHOR = 'yanzhu';
 export const RELEASE_HIGHLIGHTS = [
   '今天页面全新改版：宠物陪伴卡 + 主记录按钮 + 快捷记录。',

@@ -226,50 +226,50 @@ function buildJournalCard(type, data, opts, ratio) {
 
   const card = h('div', {
     class: 'share-card share-journal',
-    style: `width:${ratio.w}px;min-height:${ratio.h}px;background:#FFFDF8;padding:40px 36px;position:relative;overflow:hidden`
+    style: `width:${ratio.w}px;min-height:${ratio.h}px;background:#FFFBF2;padding:44px 40px;position:relative;overflow:hidden`
   });
 
   // 横线纸背景
-  card.style.backgroundImage = 'repeating-linear-gradient(transparent, transparent 31px, #E7E0D2 31px, #E7E0D2 32px)';
-  card.style.backgroundColor = '#FFFDF8';
+  card.style.backgroundImage = 'repeating-linear-gradient(transparent, transparent 33px, #E0D5BC 33px, #E0D5BC 34px)';
+  card.style.backgroundColor = '#FFFBF2';
 
   // 日期标题
   card.append(
-    h('div', { style: 'font-size:24px;font-weight:800;color:#2F3430;margin-bottom:6px' },
+    h('div', { style: 'font-size:26px;font-weight:800;color:#3A3F38;margin-bottom:8px;letter-spacing:1px' },
       `${new Date().getMonth() + 1}月${new Date().getDate()}日 · ${weekDay}`),
-    h('div', { style: 'font-size:14px;color:#747A73;margin-bottom:24px' },
+    h('div', { style: 'font-size:15px;color:#8A8F85;margin-bottom:28px' },
       opts.note || (type === 'day' ? '今天留下了什么' : '本周的小记录'))
   );
 
   // 精选事项
   if (opts.tasks && doneTasks.length) {
-    card.append(h('div', { style: 'font-size:15px;font-weight:700;color:#5F7860;margin:16px 0 8px' }, '✓ 今日完成'));
+    card.append(h('div', { style: 'font-size:15px;font-weight:700;color:#557054;margin:16px 0 8px' }, '✓ 今日完成'));
     for (const t of doneTasks.slice(0, 4)) {
-      card.append(h('div', { style: 'font-size:14px;color:#2F3430;line-height:32px' },
+      card.append(h('div', { style: 'font-size:14px;color:#3A3F38;line-height:32px' },
         '· ' + (t.title || '完成一件小事')));
     }
   }
 
   // 专注时间
   if (opts.focus && focusMin > 0) {
-    card.append(h('div', { style: 'font-size:14px;color:#2F3430;line-height:32px;margin-top:8px' },
+    card.append(h('div', { style: 'font-size:14px;color:#3A3F38;line-height:32px;margin-top:8px' },
       `⏱ 专注 ${Math.round(focusMin)} 分钟`));
   }
 
   // 新徽章
   if (opts.badges && todayBadges.length) {
-    card.append(h('div', { style: 'font-size:15px;font-weight:700;color:#5F7860;margin:16px 0 8px' }, '🏅 新解锁'));
+    card.append(h('div', { style: 'font-size:15px;font-weight:700;color:#557054;margin:16px 0 8px' }, '🏅 新解锁'));
     for (const b of todayBadges.slice(0, 3)) {
-      card.append(h('div', { style: 'font-size:14px;color:#2F3430;line-height:32px' },
+      card.append(h('div', { style: 'font-size:14px;color:#3A3F38;line-height:32px' },
         '· ' + b.name));
     }
   }
 
   // 底部统计
   card.append(h('div', { style: 'position:absolute;bottom:24px;left:36px;right:36px;display:flex;justify-content:space-between;align-items:center' },
-    h('div', { style: 'font-size:12px;color:#747A73' },
+    h('div', { style: 'font-size:12px;color:#8A8F85' },
       type === 'day' ? `记录 ${validEvents} 条` : '本周回顾'),
-    opts.pet && activePet ? h('div', { style: 'font-size:12px;color:#747A73' },
+    opts.pet && activePet ? h('div', { style: 'font-size:12px;color:#8A8F85' },
       `陪伴伙伴：${activePet.name || '伙伴'}`) : null
   ));
 
@@ -287,9 +287,9 @@ function buildAchievementCard(type, data, opts, ratio) {
 
   // 标题
   card.append(
-    h('div', { style: 'font-size:20px;font-weight:800;color:#2F3430;margin-bottom:6px' },
+    h('div', { style: 'font-size:20px;font-weight:800;color:#3A3F38;margin-bottom:6px' },
       type === 'day' ? '今日成就' : '本周成就'),
-    h('div', { style: 'font-size:13px;color:#747A73;margin-bottom:24px' },
+    h('div', { style: 'font-size:13px;color:#8A8F85;margin-bottom:24px' },
       opts.note || '一起记录的小确幸')
   );
 
@@ -298,7 +298,7 @@ function buildAchievementCard(type, data, opts, ratio) {
     const petWrap = h('div', { style: 'width:140px;height:140px;margin:16px auto' });
     try { petWrap.innerHTML = petSVG(activePet.petId, { stage: 1 }); } catch(e) {}
     card.append(petWrap);
-    card.append(h('div', { style: 'font-size:16px;font-weight:700;color:#2F3430' },
+    card.append(h('div', { style: 'font-size:16px;font-weight:700;color:#3A3F38' },
       activePet.name || petDef.name));
   }
 
@@ -306,20 +306,20 @@ function buildAchievementCard(type, data, opts, ratio) {
   card.append(h('div', { style: 'display:flex;gap:24px;margin:24px 0;justify-content:center' },
     h('div', null,
       h('div', { style: 'font-size:28px;font-weight:800;color:#748F72' }, doneTasks.length),
-      h('div', { style: 'font-size:12px;color:#747A73' }, '完成事项')),
+      h('div', { style: 'font-size:12px;color:#8A8F85' }, '完成事项')),
     h('div', null,
       h('div', { style: 'font-size:28px;font-weight:800;color:#D8A94D' }, Math.round(focusMin)),
-      h('div', { style: 'font-size:12px;color:#747A73' }, '专注分钟')),
+      h('div', { style: 'font-size:12px;color:#8A8F85' }, '专注分钟')),
     h('div', null,
       h('div', { style: 'font-size:28px;font-weight:800;color:#D78367' }, todayBadges.length),
-      h('div', { style: 'font-size:12px;color:#747A73' }, '新徽章')),
+      h('div', { style: 'font-size:12px;color:#8A8F85' }, '新徽章')),
   ));
 
   // 徽章列表
   if (opts.badges && todayBadges.length) {
     card.append(h('div', { style: 'display:flex;gap:8px;justify-content:center;margin-top:8px' },
       ...todayBadges.slice(0, 3).map((b) => h('span', {
-        style: 'padding:6px 12px;border-radius:999px;background:#E9EFE6;color:#5F7860;font-size:12px;font-weight:600'
+        style: 'padding:6px 12px;border-radius:999px;background:#E9EFE6;color:#557054;font-size:12px;font-weight:600'
       }, b.name))
     ));
   }
@@ -331,13 +331,13 @@ function buildAchievementCard(type, data, opts, ratio) {
 function getTemplateThumb(id) {
   if (id === 'journal') {
     return h('div', { style: 'width:100%;height:80px;background:#FFFDF8;border:1px solid #E7E0D2;border-radius:8px;padding:8px' },
-      h('div', { style: 'font-size:11px;font-weight:700;color:#2F3430' }, '9月18日 · 周五'),
-      h('div', { style: 'font-size:9px;color:#747A73;margin-top:4px' }, '· 散步30分钟\n· 阅读15分钟'),
+      h('div', { style: 'font-size:11px;font-weight:700;color:#3A3F38' }, '9月18日 · 周五'),
+      h('div', { style: 'font-size:9px;color:#8A8F85;margin-top:4px' }, '· 散步30分钟\n· 阅读15分钟'),
     );
   } else {
     return h('div', { style: 'width:100%;height:80px;background:#F7F3EA;border:1px solid #E7E0D2;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center' },
       h('div', { style: 'width:30px;height:30px;border-radius:50%;background:#E9EFE6;margin-bottom:4px' }),
-      h('div', { style: 'font-size:10px;font-weight:700;color:#5F7860' }, '今日成就'),
+      h('div', { style: 'font-size:10px;font-weight:700;color:#557054' }, '今日成就'),
     );
   }
 }
