@@ -280,3 +280,4 @@ export async function checkForUpdate() {
     fx.toast('检查更新失败，请稍后再试', { ic: 'star' });
   }
 }
+// rebuild trigger
