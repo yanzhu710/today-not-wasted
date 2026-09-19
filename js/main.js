@@ -193,7 +193,7 @@ async function openPlusSheet() {
     { ic: 'task', label: '新建任务', onClick: () => import('./pages/today.js').then((m) => m.taskDialog()) },
     { ic: 'focus', label: '开始专注', onClick: () => import('./pages/focus.js').then(m => m.openFocus()).catch(e => { console.error(e); fx.toast('专注计时打开失败，请重试',{ic:'error'}); }) },
     { ic: 'ledger', label: '记一笔', onClick: () => import('./pages/today.js').then((m) => m.quickLedgerDialog()) },
-    { ic: 'journal', label: '写手账 / 记心情', onClick: () => import('./pages/footprint.js').then((m) => m.journalDialog()) },
+    { ic: 'heart', label: '记心情', onClick: () => import('./pages/footprint.js').then((m) => m.journalDialog()) },
   ]);
 }
 

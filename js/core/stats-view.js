@@ -26,7 +26,7 @@ export async function renderStatsView(box, opts={}) {
         h('div',{class:'repair-metrics'},metricTile(data.recordDays,'记录日'),metricTile(data.completedCount,'完成事项'),metricTile(formatMin(data.focusMin),'有效专注'),metricTile(data.badgeCount,'新徽章')),
         h('p',{class:'repair-caption'},'记录日按内容日期统计；摸宠物和兑换不计入。完成事项含任务、习惯、快捷记录和清单。'),
         h('button',{class:'btn btn-soft',onclick:()=>openSharePanel({type,dateKey:anchor})},'生成这段时间的分享卡'));
-      body.append(summary,donut(data,metric),trend(data,metric),heatmap(heat));
+      const merged=h('section',{class:'data-merged-stack'},summary,donut(data,metric),trend(data,metric),heatmap(heat));body.append(merged);
     } catch(error) {
       if(ticket!==sequence)return;
       body.replaceChildren(h('div',{class:'card'},h('p',null,'统计加载失败，请重试。'),h('button',{class:'btn btn-primary',onclick:refresh},'重试')));
@@ -53,8 +53,9 @@ function donut(data,metric){
 function trend(data,metric){
   const values=metric==='count'?data.dayCounts:data.dayMinutes, unit=metric==='count'?'条':'分', max=Math.max(1,...Object.values(values));
   const out=h('output',{class:'repair-caption','aria-live':'polite'},'点击柱形查看当天明细');
-  const chart=h('div',{class:'repair-bars',style:`--columns:${data.range.days.length}`});
-  for(const d of data.range.days){const value=values[d]||0;chart.append(h('button',{class:'repair-bar',title:`${d}：${value}${unit}`,'aria-label':`${d} ${value}${unit}`,onclick:()=>{out.textContent=`${d}：${value}${unit}`;}},h('span',{class:'repair-bar-area'},h('i',{style:`height:${value/max*100}%`})),h('small',null,d.slice(5)),h('small',null,String(Math.round(value*10)/10))));}
+  const dense=data.range.days.length>14;
+  const chart=h('div',{class:'repair-bars'+(dense?' dense':''),style:`--columns:${data.range.days.length}`});
+  data.range.days.forEach((d,index)=>{const value=values[d]||0;const show=!dense||index===0||index===data.range.days.length-1||index%5===4;chart.append(h('button',{class:'repair-bar',title:`${d}：${value}${unit}`,'aria-label':`${d} ${value}${unit}`,onclick:()=>{out.textContent=`${d}：${value}${unit}`;}},h('span',{class:'repair-bar-area'},h('i',{style:`height:${value/max*100}%`})),h('small',null,show?d.slice(8):''),h('small',{class:'repair-bar-value'},dense?'':String(Math.round(value*10)/10))));});
   return h('div',{class:'card'},h('div',{class:'card-title'},'所选时间段 · 每日趋势'),h('div',{class:'repair-chart-scroll'},chart),out);
 }
 function heatmap(data){

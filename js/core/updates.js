@@ -32,25 +32,41 @@ function offerUpdate(worker,manual=false){
     }},
   ]});
 }
-function waitForInstall(worker){
-  if(!worker||['installed','activated','redundant'].includes(worker.state))return Promise.resolve();
+function waitForInstall(worker,onProgress=()=>{}){
+  if(!worker){onProgress(90,'没有需要安装的新文件');return Promise.resolve();}
+  if(['installed','activated'].includes(worker.state)){onProgress(95,'新版资源已经准备好');return Promise.resolve();}
+  if(worker.state==='redundant')return Promise.reject(new Error('新版安装已被浏览器取消，请稍后重试'));
   return new Promise((resolve,reject)=>{
-    const timer=setTimeout(()=>{worker.removeEventListener('statechange',onState);reject(new Error('新版资源仍在准备，请稍后再检查'));},15000);
-    function onState(){if(['installed','activated','redundant'].includes(worker.state)){clearTimeout(timer);worker.removeEventListener('statechange',onState);resolve();}}
+    const timer=setTimeout(()=>{worker.removeEventListener('statechange',onState);reject(new Error('新版资源仍在准备，请稍后再检查'));},20000);
+    function onState(){
+      const map={installing:[62,'正在下载并校验新版资源'],installed:[95,'新版资源已经准备好'],activating:[97,'正在切换新版'],activated:[100,'更新完成'],redundant:[0,'新版安装被取消']};
+      const row=map[worker.state];if(row)onProgress(row[0],row[1]);
+      if(['installed','activated'].includes(worker.state)){clearTimeout(timer);worker.removeEventListener('statechange',onState);resolve();}
+      if(worker.state==='redundant'){clearTimeout(timer);worker.removeEventListener('statechange',onState);reject(new Error('新版安装已被浏览器取消，请稍后重试'));}
+    }
     worker.addEventListener('statechange',onState);onState();
   });
 }
+
 export async function checkUpdates(){
   if(!supported()){toast('当前环境不支持应用更新',{ic:'error'});return;}
   if(checking)return;checking=true;
-  const modal=openModal({title:'检查更新',content:h('p',{role:'status'},'正在向站点检查版本，没有模拟进度。')});
+  const label=h('div',{class:'update-progress-label',role:'status','aria-live':'polite'},'正在准备检查…');
+  const value=h('span',{class:'update-progress-value'},'0%');
+  const fill=h('i',{class:'update-progress-fill',style:'width:0%'});
+  const bar=h('div',{class:'update-progress-track',role:'progressbar','aria-valuemin':'0','aria-valuemax':'100','aria-valuenow':'0'},fill);
+  const setProgress=(n,text)=>{const v=Math.max(0,Math.min(100,Math.round(n)));fill.style.width=v+'%';value.textContent=v+'%';bar.setAttribute('aria-valuenow',String(v));if(text)label.textContent=text;};
+  const modal=openModal({title:'检查更新',content:h('div',{class:'update-progress-card'},h('div',{class:'update-progress-head'},label,value),bar,h('p',{class:'form-hint'},'进度对应真实检查阶段，不会用随机数字模拟下载。')),actions:[]});
   try{
+    setProgress(12,'正在定位本应用的更新服务…');
     const reg=registration || await navigator.serviceWorker.getRegistration(new URL('../../',import.meta.url).href) || await registerUpdates();
     if(!reg)throw new Error('离线缓存尚未初始化，请联网重试');
-    await reg.update();await waitForInstall(reg.installing);
-    modal.close();
-    if(reg.waiting)offerUpdate(reg.waiting,true);
-    else toast('检查完成，当前没有等待安装的新版本',{ic:'check'});
+    setProgress(30,'正在向站点请求最新版本…');
+    await reg.update();
+    setProgress(reg.installing?52:78,reg.installing?'发现新版，正在准备资源…':'版本检查完成，正在确认状态…');
+    await waitForInstall(reg.installing,(n,text)=>setProgress(n,text));
+    if(reg.waiting){setProgress(100,'新版已经准备好');await new Promise(r=>setTimeout(r,180));modal.close();offerUpdate(reg.waiting,true);}
+    else {setProgress(100,'已经是最新版本');await new Promise(r=>setTimeout(r,320));modal.close();toast('检查完成，当前没有等待安装的新版本',{ic:'check'});}
   }catch(error){modal.close();toast(error.message||'检查更新失败',{ic:'error',ms:3500});}
   finally{checking=false;}
 }

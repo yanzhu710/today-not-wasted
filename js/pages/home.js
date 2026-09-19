@@ -41,16 +41,25 @@ export async function renderHome(view, ctx) {
 }
 
 async function renderRewardCenter(box, ctx, sub) {
-  box.append(h('section',{class:'card reward-center-head'},
-    h('div',{class:'card-title'},icon('gift'),'奖励中心',h('span',{class:'reward-balance num'},balance()+' 积分')),
-    h('p',{class:'row-sub'},'把认真生活换成一点喜欢的东西。宠物道具和你给自己的奖励都在这里。')));
+  let rewardPet = null;
+  try {
+    const active = await getActivePet();
+    if (active) { const { petFigure } = await import('../ui/paper.js'); rewardPet = petFigure(active); }
+  } catch {}
+  box.append(h('section',{class:'card reward-center-head reward-art-banner'},
+    h('div',{class:'reward-banner-copy'},
+      h('span',{class:'reward-banner-kicker'},'REWARD CORNER'),
+      h('div',{class:'card-title'},icon('gift'),'奖励中心',h('span',{class:'reward-balance num'},balance()+' 积分')),
+      h('p',{class:'row-sub'},'把认真生活换成一点喜欢的东西。这里不是任务清单，是给自己的小期待。'),
+      h('div',{class:'reward-banner-tags'},h('span',null,'努力有回声'),h('span',null,'小小奖励也值得'))),
+    rewardPet ? h('div',{class:'reward-banner-pet'},rewardPet) : h('div',{class:'reward-banner-gift','aria-hidden':'true'},'🎁')));
   box.append(routeTabs({
     value: sub,
     ariaLabel:'奖励分类',
     className:'reward-subtabs',
     items:[
-      {id:'shop',label:'道具',href:'home?tab=rewards&sub=shop'},
-      {id:'custom',label:'自定义奖励',href:'home?tab=rewards&sub=custom'},
+      {id:'shop',label:'商城',href:'home?tab=rewards&sub=shop'},
+      {id:'custom',label:'制作',href:'home?tab=rewards&sub=custom'},
       {id:'owned',label:'已拥有',href:'home?tab=rewards&sub=owned'},
     ],
   }));
@@ -61,36 +70,67 @@ async function renderRewardCenter(box, ctx, sub) {
 
 async function renderCustomRewards(box, ctx) {
   const rows = (await all('custom_rewards')).sort((a,b)=>(Number(b.createdAt)||0)-(Number(a.createdAt)||0));
-  const addBtn = h('button',{class:'btn btn-primary btn-sm',onclick:async()=>{
-    const v=await formDlg({title:'新增自定义奖励',fields:[
-      {key:'t',label:'奖励内容',type:'text',placeholder:'例如：看一场电影'},
-      {key:'c',label:'所需积分',type:'number',placeholder:'例如 80'},
-    ],submitLabel:'添加'});
-    if(!v?.t?.trim())return;
-    await put('custom_rewards',{id:uid('cr'),title:v.t.trim(),cost:Math.max(0,Number(v.c)||0),redeemedAt:null,fulfilledAt:null,doneAt:null,createdAt:Date.now()});
-    ctx.rerender('home?tab=rewards&sub=custom');
-  }},icon('plus'),'添加奖励');
-  box.append(h('div',{class:'reward-custom-actions'},addBtn));
-  if(!rows.length){box.append(h('section',{class:'card'},h('div',{class:'empty'},'还没有自定义奖励。给自己留一个值得期待的小盼头吧。')));return;}
-  const available=h('section',{class:'card'},h('div',{class:'card-title'},'可以兑换'));
+  const addBtn = h('button',{class:'btn btn-primary btn-sm reward-add-btn',onclick:()=>openCustomRewardDialog(ctx)},icon('plus'),'制作我的奖励');
+  box.append(h('section',{class:'card reward-custom-hero'},
+    h('div',{class:'reward-custom-copy'},
+      h('span',{class:'reward-custom-kicker'},'MAKE YOUR STICKER'),
+      h('b',null,'把喜欢的东西做成自己的小周边'),
+      h('p',null,'图片只在本机处理：自动识别主体、去除相近背景、加手绘白边，再上架到你的奖励商城。'),
+      h('div',{class:'reward-feature-chips'},h('span',null,'✓ 自动抠图'),h('span',null,'✓ 手绘白边'),h('span',null,'✓ 本机处理'))),
+    addBtn));
+  if(!rows.length){box.append(h('section',{class:'card'},h('div',{class:'empty'},'还没有自定义奖励。可以上传一张喜欢的图片，做成第一件奖励周边。')));return;}
+  const available=h('section',{class:'card'},h('div',{class:'card-title'},'已上架商城'));
+  const grid=h('div',{class:'reward-custom-grid'});available.append(grid);
   const pending=h('section',{class:'card'},h('div',{class:'card-title'},'待兑现'));
   const done=h('section',{class:'card'},h('div',{class:'card-title'},'已经享受'));
   let na=0,np=0,nd=0;
   for(const r of rows){
-    const fulfilled=!!(r.fulfilledAt||r.doneAt);
-    const redeemed=fulfilled||!!r.redeemedAt;
-    const row=h('div',{class:'reward-custom-row'},
-      h('div',{class:'row-main'},h('b',{class:'row-title'+(fulfilled?' done':'')},r.title),h('div',{class:'row-sub'},r.cost?`${r.cost} 积分`:'无需积分',fulfilled?' · 已完成':redeemed?' · 待兑现':'')),
-      fulfilled?null:redeemed?h('button',{class:'btn btn-soft btn-sm',onclick:async()=>{r.fulfilledAt=Date.now();r.doneAt=r.fulfilledAt;await put('custom_rewards',r);toast('已记下这份奖励',{ic:'check'});ctx.rerender('home?tab=rewards&sub=custom');}},'已经享受'):h('button',{class:'btn btn-primary btn-sm',onclick:async()=>{
-        const result=await redeemCustomReward(r.id);
-        if(result?.err){toast(result.err,{ic:'error'});return;}
-        toast('已兑换，放进「待兑现」',{ic:'gift'});ctx.rerender('home?tab=rewards&sub=custom');
-      }},r.cost?'兑换':'领取'),
-      h('button',{class:'iconbtn','aria-label':'删除奖励',onclick:async()=>{if(await confirmDlg('删除这条奖励？','已扣除的积分不会自动退回。',{danger:true,okLabel:'删除'})){await del('custom_rewards',r.id);ctx.rerender('home?tab=rewards&sub=custom');}}},icon('trash')));
-    if(fulfilled){done.append(row);nd++;} else if(redeemed){pending.append(row);np++;} else {available.append(row);na++;}
+    const fulfilled=!!(r.fulfilledAt||r.doneAt), redeemed=fulfilled||!!r.redeemedAt;
+    if(!redeemed){
+      const art=h('div',{class:'reward-sticker-frame'});
+      if(r.photoId){const img=h('img',{alt:r.title,loading:'lazy'});art.append(img);loadRewardImage(img,r.photoId);} else art.append(h('span',{class:'reward-sticker-fallback'},icon('gift')));
+      const card=h('article',{class:'reward-product-card'},art,h('b',null,r.title),h('span',{class:'reward-price'},r.cost?`${r.cost} 积分`:'免费领取'),
+        h('button',{class:'btn btn-soft btn-sm reward-exchange-btn',onclick:()=>ctx.navigate('rewards','shop')},'去商城'),
+        h('button',{class:'reward-delete-link','aria-label':'删除奖励',onclick:async()=>deleteCustomReward(r,ctx)},'删除'));
+      grid.append(card);na++;continue;
+    }
+    const row=h('div',{class:'reward-custom-row reward-history-row'},
+      rewardMiniArt(r),
+      h('div',{class:'row-main'},h('b',{class:'row-title'+(fulfilled?' done':'')},r.title),h('div',{class:'row-sub'},r.cost?`${r.cost} 积分`:'无需积分',fulfilled?' · 已完成':' · 待兑现')),
+      fulfilled?null:h('button',{class:'btn btn-soft btn-sm',onclick:async()=>{r.fulfilledAt=Date.now();r.doneAt=r.fulfilledAt;await put('custom_rewards',r);toast('已记下这份奖励',{ic:'check'});ctx.rerender('home?tab=rewards&sub=custom');}},'已经享受'),
+      h('button',{class:'iconbtn','aria-label':'删除奖励',onclick:()=>deleteCustomReward(r,ctx)},icon('trash')));
+    if(fulfilled){done.append(row);nd++;}else{pending.append(row);np++;}
   }
-  if(na)box.append(available); if(np)box.append(pending); if(nd)box.append(done);
+  if(na)box.append(available);if(np)box.append(pending);if(nd)box.append(done);
 }
+
+async function openCustomRewardDialog(ctx){
+  const titleInp=h('input',{class:'input',placeholder:'例如：看一场电影',maxlength:'30'});
+  const costInp=h('input',{class:'input',type:'number',min:'0',step:'1',placeholder:'例如 80'});
+  const status=h('div',{class:'reward-cutout-status'},h('span',{class:'status-dot'}),h('span',null,'等待选择图片'));
+  const preview=h('div',{class:'reward-upload-preview'},h('div',{class:'reward-upload-empty'},icon('camera'),h('span',null,'上传图片，自动识别主体并生成白边贴纸')));
+  let photoId=null, previewUrl=null, busy=false;
+  const choose=h('button',{class:'btn btn-soft btn-sm',onclick:()=>pick()},icon('camera'),'选择图片');
+  async function pick(){
+    const input=h('input',{type:'file',accept:'image/*',style:'display:none'});document.body.append(input);
+    input.addEventListener('change',async()=>{const file=input.files?.[0];input.remove();if(!file)return;choose.disabled=true;busy=true;status.className='reward-cutout-status working';status.lastElementChild.textContent='正在识别主体并绘制白边…';try{
+      const {saveRewardSticker}=await import('../core/reward-art.js');const next=await saveRewardSticker(file);if(photoId)await del('photos',photoId).catch(()=>{});photoId=next;const row=await get('photos',photoId);if(previewUrl)URL.revokeObjectURL(previewUrl);previewUrl=URL.createObjectURL(row.thumb||row.blob);preview.replaceChildren(h('img',{src:previewUrl,alt:'奖励周边预览'}));choose.replaceChildren(icon('camera'),'更换图片');
+      const autoCut = ['alpha','cutout'].includes(row?.cutoutMode);status.className='reward-cutout-status '+(autoCut?'done':'soft');status.lastElementChild.textContent=autoCut?'主体已识别 · 白边贴纸已生成':'背景较复杂 · 已安全降级为白边周边卡';
+      toast(autoCut?'已自动抠出主体并生成手绘白边':'背景较复杂，已生成不伤主体的白边周边',{ic:autoCut?'check':'info'});
+    }catch(error){status.className='reward-cutout-status error';status.lastElementChild.textContent='处理失败，请换一张更清晰的图片';toast(error.message||'图片处理失败',{ic:'error'});}finally{choose.disabled=false;busy=false;}});input.click();setTimeout(()=>input.isConnected&&input.remove(),8000);
+  }
+  let finalized=false;
+  openModal({title:'制作自定义奖励',content:h('div',{class:'form-list'},
+    h('div',{class:'form-item'},h('span',{class:'form-label'},'奖励图片'),preview,status,choose,h('span',{class:'form-hint'},'透明 PNG 直接沿主体描边；普通 JPG/HEIC 会尝试从画面边缘识别背景并自动抠出主体。复杂背景识别不可靠时会自动降级，避免把主体误删。')),
+    h('div',{class:'form-item'},h('span',{class:'form-label'},'奖励内容'),titleInp),
+    h('div',{class:'form-item'},h('span',{class:'form-label'},'所需积分'),costInp)),actions:[
+      {label:'取消',onClick:async close=>{if(photoId)await del('photos',photoId).catch(()=>{});if(previewUrl)URL.revokeObjectURL(previewUrl);photoId=null;previewUrl=null;finalized=true;close();}},
+      {label:'放进商城',cls:'btn-primary',onClick:async close=>{if(busy)return;const title=titleInp.value.trim();if(!title){toast('先写奖励内容',{ic:'error'});return;}await put('custom_rewards',{id:uid('cr'),title,cost:Math.max(0,Number(costInp.value)||0),photoId,redeemedAt:null,fulfilledAt:null,doneAt:null,createdAt:Date.now()});if(previewUrl)URL.revokeObjectURL(previewUrl);photoId=null;previewUrl=null;finalized=true;close();toast('已经放进你的奖励商城',{ic:'gift'});ctx.rerender('home?tab=rewards&sub=custom');}}
+    ],onClose:()=>{if(finalized)return;if(previewUrl)URL.revokeObjectURL(previewUrl);if(photoId)del('photos',photoId).catch(()=>{});}});
+}
+function rewardMiniArt(r){const box=h('span',{class:'reward-mini-art'});if(r.photoId){const img=h('img',{alt:'',loading:'lazy'});box.append(img);loadRewardImage(img,r.photoId);}else box.append(icon('gift'));return box;}
+async function loadRewardImage(img,photoId){const row=await get('photos',photoId).catch(()=>null);if(!row)return;const url=URL.createObjectURL(row.thumb||row.blob);img.addEventListener('load',()=>URL.revokeObjectURL(url),{once:true});img.src=url;}
+async function deleteCustomReward(r,ctx){if(!(await confirmDlg('删除这条奖励？','已扣除的积分不会自动退回。',{danger:true,okLabel:'删除'})))return;await del('custom_rewards',r.id);if(r.photoId)await del('photos',r.photoId).catch(()=>{});ctx.rerender('home?tab=rewards&sub=custom');}
 
 function badgeFxColors(points = 10) {
   const rar = badgeRarity(points);
@@ -164,10 +204,10 @@ async function renderHomeTab(box, ctx) {
       petMetric('badge','徽章',unlocked.length)));
   box.append(stateCard);
 
-  const actionDefs=[['touch','摸摸','轻轻回应你','heart'],['feed','喂食','选择一份食物','gift'],['encourage','鼓励','送一句加油','star'],['play','玩耍','选个喜欢的玩具','pet']];
+  const actionDefs=[['touch','摸摸','heart'],['feed','喂食','gift'],['encourage','鼓励','star'],['play','玩耍','pet']];
   const actions=h('div',{class:'ref-pet-actions'});
-  for(const [kind,label,sub,ic] of actionDefs){const button=h('button',{class:'ref-pet-action action-'+kind,onclick:()=>runInteraction(kind)},
-    h('span',{class:'ref-pet-action-art','aria-hidden':'true'},icon(ic)),h('b',null,label),h('small',null,sub));actionButtons.push(button);actions.append(button);}
+  for(const [kind,label,ic] of actionDefs){const button=h('button',{class:'ref-pet-action action-'+kind,onclick:()=>runInteraction(kind)},
+    h('span',{class:'ref-pet-action-art','aria-hidden':'true'},icon(ic)),h('b',null,label));actionButtons.push(button);actions.append(button);}
   box.append(actions);
 
   async function runInteraction(kind){
@@ -255,6 +295,16 @@ async function renderShop(box, ctx) {
     gridWrap.append(grid);
   }
   drawGrid();
+  await renderUserRewardShop(box,ctx);
+}
+async function renderUserRewardShop(box,ctx){
+  const rows=(await all('custom_rewards')).filter(r=>!r.redeemedAt&&!r.fulfilledAt&&!r.doneAt).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  const section=h('section',{class:'card user-reward-shop'},h('div',{class:'card-title'},'我的奖励周边',h('button',{class:'more',onclick:()=>ctx.navigate('rewards','custom')},icon('plus'),'制作')));
+  if(!rows.length){section.append(h('p',{class:'paper-empty'},'还没有自定义周边。去「制作」上传一张图片吧。'));box.append(section);return;}
+  const grid=h('div',{class:'reward-custom-grid'});section.append(grid);
+  rows.forEach(r=>{const art=h('div',{class:'reward-sticker-frame'});if(r.photoId){const img=h('img',{alt:r.title,loading:'lazy'});art.append(img);loadRewardImage(img,r.photoId);}else art.append(h('span',{class:'reward-sticker-fallback'},icon('gift')));
+    grid.append(h('article',{class:'reward-product-card'},art,h('b',null,r.title),h('span',{class:'reward-price'},r.cost?`${r.cost} 积分`:'免费领取'),h('button',{class:'btn btn-primary btn-sm reward-exchange-btn',onclick:async e=>{const btn=e.currentTarget;if(btn.disabled)return;btn.disabled=true;try{const result=await redeemCustomReward(r.id);if(result?.err){toast(result.err,{ic:'error'});return;}toast('兑换成功，已放进待兑现',{ic:'gift'});ctx.rerender('home?tab=rewards&sub=shop');}finally{btn.disabled=false;}}},r.cost?'确认兑换':'领取')));
+  });box.append(section);
 }
 async function itemModal(item, owned, ctx) {
   const S = stats() || {};
@@ -276,7 +326,7 @@ async function itemModal(item, owned, ctx) {
     actions: [
       { label: '关闭', onClick: (c) => c() },
       {
-        label: canBuy ? `确认兑换（${item.price} 积分）` : (unl ? '积分不足' : '未解锁'), cls: 'btn-primary', disabled: !canBuy,
+        label: canBuy ? `确认兑换 · ${item.price}积分` : (unl ? '积分不足' : '未解锁'), cls: 'btn-primary exchange-confirm', disabled: !canBuy,
         onClick: async (c) => {
           const r = await purchaseItem(item);
           if (r.err) { toast(r.err, { ic: 'error' }); return; }

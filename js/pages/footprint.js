@@ -40,18 +40,25 @@ export async function renderFootprint(view, ctx) {
   if (tab === 'timeline') await renderRecordFeed(box, ctx, filter);
   else if (tab === 'calendar') await renderCalendar(box, ctx);
   else {
-    box.append(h('section',{class:'card record-data-intro'},
-      h('div',{class:'card-title'},icon('stats'),'数据与回顾'),
-      h('p',{class:'row-sub'},'统计和回顾都只读取已经保存的记录。'),
-      h('button',{class:'btn btn-primary btn-sm',onclick:()=>openSharePanel()},icon('share'),'生成日 / 周分享')));
-    await renderStats(box);
-    await renderReview(box, ctx);
+    const dataView=ctx.routeParams?.get('view')==='ledger'?'ledger':'life';
+    box.append(routeTabs({value:dataView,ariaLabel:'数据类型',className:'data-view-tabs',items:[
+      {id:'life',label:'生活数据',href:'footprint?tab=data&view=life'},
+      {id:'ledger',label:'账本分析',href:'footprint?tab=data&view=ledger'},
+    ]}));
+    if(dataView==='ledger') await renderLedger(box,ctx);
+    else {
+      box.append(h('section',{class:'card record-data-intro'},
+        h('div',{class:'card-title'},icon('stats'),'数据与回顾',h('button',{class:'more',onclick:()=>openSharePanel()},icon('share'),'分享')),
+        h('p',{class:'row-sub'},'统计、趋势和回顾统一读取已经保存的真实记录。')));
+      await renderStats(box);
+      await renderReview(box, ctx);
+    }
   }
 }
 
 async function renderRecordFeed(box, ctx, filter = 'all') {
-  const [events, quickRows, focusRows, journalRows, ledgerRows, tasks, habits, habitLogs] = await Promise.all([
-    all('events'), all('quick_records'), all('focus_sessions'), all('journal'), all('ledger'), all('tasks'), all('habits'), all('habit_logs'),
+  const [events, quickRows, focusRows, journalRows, ledgerRows, tasks, habits, habitLogs, appMeta, pets] = await Promise.all([
+    all('events'), all('quick_records'), all('focus_sessions'), all('journal'), all('ledger'), all('tasks'), all('habits'), all('habit_logs'), loadKV('app_meta'), all('pets'),
   ]);
   const quickMap = new Map(quickRows.map(r=>[r.id,r]));
   const focusMap = new Map(focusRows.map(r=>[r.id,r]));
@@ -61,9 +68,21 @@ async function renderRecordFeed(box, ctx, filter = 'all') {
   const habitMap = new Map(habits.map(r=>[r.id,r]));
   const habitLogMap = new Map(habitLogs.map(r=>[r.id,r]));
 
-  box.append(h('section',{class:'card record-home-card'},
-    h('div',{class:'card-title'},icon('book'),'所有已经发生的事，都在这里'),
-    h('p',{class:'row-sub'},'首页记录的小事、完成的任务、专注、手账和账目都会按日期汇到这一页。')));
+  let recordPet = null;
+  try {
+    const active = pets.find(p=>p.petId===appMeta.activePet) || pets[0];
+    if (active) { const { petFigure } = await import('../ui/paper.js'); recordPet = petFigure(active); }
+  } catch {}
+  box.append(h('section',{class:'record-art-hero'},
+    h('div',{class:'record-art-copy'},
+      h('span',{class:'record-art-kicker'},'LIFE NOTES'),
+      h('h2',null,'生活一件一件记，',h('br'),'就会慢慢发光。'),
+      h('p',null,'已经发生的小事、专注、心情和账目，都沿着时间留在这里。'),
+      h('div',{class:'record-art-tags'},h('span',null,'按时间排列'),h('span',null,'真实记录'),h('span',null,'随时回看'))),
+    recordPet ? h('div',{class:'record-art-pet'},recordPet) : h('div',{class:'record-art-mark','aria-hidden':'true'},'♡'),
+    h('span',{class:'record-art-leaf leaf-one','aria-hidden':'true'}),
+    h('span',{class:'record-art-leaf leaf-two','aria-hidden':'true'}),
+    h('span',{class:'record-art-tape','aria-hidden':'true'})));
 
   box.append(routeTabs({
     value: filter,
@@ -73,38 +92,47 @@ async function renderRecordFeed(box, ctx, filter = 'all') {
       {id:'all',label:'全部',href:'footprint?tab=timeline&filter=all'},
       {id:'quick',label:'小事',href:'footprint?tab=timeline&filter=quick'},
       {id:'focus',label:'专注',href:'footprint?tab=timeline&filter=focus'},
-      {id:'journal',label:'手账',href:'footprint?tab=timeline&filter=journal'},
+      {id:'journal',label:'心情',href:'footprint?tab=timeline&filter=journal'},
       {id:'ledger',label:'账目',href:'footprint?tab=timeline&filter=ledger'},
     ],
   }));
+  if(filter==='ledger') box.append(h('div',{class:'record-filter-action'},h('button',{class:'btn btn-soft btn-sm',onclick:()=>{location.hash='#/footprint?tab=data&view=ledger';}},icon('stats'),'查看账本分析')));
 
+  const actualTs = e => {
+    if(e.kind==='quick'){const r=quickMap.get(e.refId);if(r?.startTime){const t=Date.parse(`${e.dateKey}T${r.startTime}:00`);if(Number.isFinite(t))return t;}}
+    if(e.kind==='focus'){const r=focusMap.get(e.refId);if(Number.isFinite(Number(r?.startedTs)))return Number(r.startedTs);}
+    return Number(e.ts)||0;
+  };
   const visible = events
     .filter(e => isValidRecord(e))
     .filter(e => filter === 'all' || e.kind === filter)
-    .sort((a,b) => (b.dateKey || '').localeCompare(a.dateKey || '') || (Number(b.ts)||0)-(Number(a.ts)||0))
+    .sort((a,b) => (b.dateKey || '').localeCompare(a.dateKey || '') || actualTs(b)-actualTs(a))
     .slice(0,260);
   if (!visible.length) {
     box.append(h('section',{class:'card'},h('div',{class:'empty'},filter==='all'?'还没有记录。先从「今天」记下一件真实的小事吧。':'这一类还没有记录。')));
     return;
   }
 
-  const card = h('section',{class:'card record-feed'});
+  const dayCount = new Map(); visible.forEach(e=>dayCount.set(e.dateKey,(dayCount.get(e.dateKey)||0)+1));
+  const card = h('section',{class:'record-feed record-timeline-art'});
   let lastDate = '';
   for (const e of visible) {
     if (e.dateKey !== lastDate) {
       lastDate = e.dateKey;
+      const info=dayInfo(e.dateKey);
       card.append(h('div',{class:'record-date-head'},
-        h('b',null,e.dateKey===todayKey()?'今天':fmtCN(e.dateKey)),
-        h('span',null,dayInfo(e.dateKey).weekend?'周末':'')));
+        h('div',{class:'record-date-brush'},h('b',null,e.dateKey===todayKey()?'今天':fmtCN(e.dateKey)),h('small',null,info.weekend?'周末':'生活足迹')),
+        h('span',{class:'record-day-count'},`${dayCount.get(e.dateKey)||0} 条记录`)));
     }
     const meta = recordMeta(e);
-    const row = h('div',{class:'record-feed-row'+(meta.click?' clickable':'')},
-      h('span',{class:'record-kind-icon'},icon(kindIcon(e.kind))),
+    const row = h('article',{class:'record-feed-row timeline-row kind-'+e.kind+(meta.click?' clickable':''),'data-kind':e.kind},
+      h('span',{class:'record-kind-icon','aria-hidden':'true'},icon(kindIcon(e.kind))),
       h('div',{class:'record-feed-main'},
-        h('div',{class:'record-feed-title'},h('b',null,meta.title),h('time',null,new Date(e.ts||Date.now()).toTimeString().slice(0,5))),
+        h('div',{class:'record-feed-title'},h('b',null,meta.title),h('time',null,meta.timeLabel||new Date(actualTs(e)||Date.now()).toTimeString().slice(0,5))),
         meta.sub ? h('div',{class:'record-feed-sub'},meta.sub) : null,
         meta.photoId ? h('img',{class:'journal-photo record-photo','data-photo':meta.photoId,alt:'手账照片',loading:'lazy'}) : null),
-      h('span',{class:'record-kind-label'},kindName(e.kind)));
+      h('span',{class:'record-kind-label'},kindName(e.kind)),
+      h('span',{class:'record-row-doodle','aria-hidden':'true'},e.kind==='journal'?'♡':e.kind==='focus'?'✦':e.kind==='ledger'?'◌':'·'));
     if (meta.click) row.addEventListener('click', meta.click);
     card.append(row);
   }
@@ -113,13 +141,13 @@ async function renderRecordFeed(box, ctx, filter = 'all') {
 
   function recordMeta(e) {
     if (e.kind === 'quick') {
-      const r=quickMap.get(e.refId); return {title:r?.title||r?.note||catName(e.category)||'记录了一件小事',sub:[r?.minutes?fmtMin(r.minutes):'',r?.count?`×${r.count}`:'',r?.note||''].filter(Boolean).join(' · ')};
+      const r=quickMap.get(e.refId);const range=r?.startTime&&r?.endTime?`${r.startTime}–${r.endTime}`:''; return {title:r?.title||r?.note||catName(e.category)||'记录了一件小事',timeLabel:r?.startTime||null,sub:[range,r?.minutes?fmtMin(r.minutes):'',r?.count?`×${r.count}`:'',r?.note||''].filter(Boolean).join(' · ')};
     }
     if (e.kind === 'focus') {
-      const r=focusMap.get(e.refId); return {title:`专注 ${fmtMin(e.minutes||r?.minutes||0)}`,sub:r?.note||''};
+      const r=focusMap.get(e.refId);const st=Number(r?.startedTs),et=Number(r?.endedTs);const range=Number.isFinite(st)&&Number.isFinite(et)?`${new Date(st).toTimeString().slice(0,5)}–${new Date(et).toTimeString().slice(0,5)}`:''; return {title:`专注 ${fmtMin(e.minutes||r?.minutes||0)}`,timeLabel:Number.isFinite(st)?new Date(st).toTimeString().slice(0,5):null,sub:[range,r?.note||''].filter(Boolean).join(' · ')};
     }
     if (e.kind === 'journal') {
-      const r=journalMap.get(e.refId); return {title:r?.text||'留下了一条手账',sub:r?.mood?`心情 · ${moodById(r.mood)?.name||'已记录'}`:'',photoId:r?.photoId||null,click:r?()=>journalDialog(r,ctx):null};
+      const r=journalMap.get(e.refId); return {title:r?.text||'记录了一份心情',sub:r?.mood?`心情 · ${moodById(r.mood)?.name||'已记录'}`:'',photoId:r?.photoId||null,click:r?()=>journalDialog(r,ctx):null};
     }
     if (e.kind === 'ledger') {
       const r=ledgerMap.get(e.refId); const settingsCurrency='¥';
@@ -213,12 +241,12 @@ async function daySheet(dk) {
     outSum || inSum ? sec('账目', h('div', { class: 'row-title', style: 'font-size:13.5px' }, `支 ${fmtMoney(outSum)} · 收 ${fmtMoney(inSum)}`)) : null,
     h('div', { class: 'btn-row', style: 'margin-top:6px' },
       h('button', { class: 'btn btn-soft btn-sm', onclick: () => quickRecordDialog({dateKey:dk}) }, '记小事'),
-      h('button', { class: 'btn btn-soft btn-sm', onclick: () => journalDialog(null,null,dk) }, '补手账'),
+      h('button', { class: 'btn btn-soft btn-sm', onclick: () => journalDialog(null,null,dk) }, '补心情'),
       h('button', { class: 'btn btn-soft btn-sm', onclick: () => quickLedgerDialog({dateKey:dk}) }, '补记账')));
   openModal({ title: fmtCNFull(dk) + (info.weekend ? '（周末）' : ''), content });
 }
 function kindName(k) {
-  return { task: '任务', habit: '习惯', quick: '快捷记录', focus: '专注', checklist: '清单', journal: '手账', ledger: '记账', milestone: '里程碑', goal: '目标', review: '回顾', pet: '宠物互动', purchase: '兑换' }[k] || k;
+  return { task: '任务', habit: '习惯', quick: '快捷记录', focus: '专注', checklist: '清单', journal: '心情', ledger: '记账', milestone: '里程碑', goal: '目标', review: '回顾', pet: '宠物互动', purchase: '兑换' }[k] || k;
 }
 
 // ================= 时间线 =================
@@ -285,7 +313,7 @@ export async function fillPhotos(rootEl) {
       img.tabIndex = 0;
       img.setAttribute('role', 'button');
       img.setAttribute('aria-label', '查看大图');
-      img.addEventListener('click', () => openJournalPhoto(photoId));
+      img.addEventListener('click', (e) => { e.stopPropagation(); openJournalPhoto(photoId); });
       img.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openJournalPhoto(photoId); } });
     }
   }
@@ -357,8 +385,9 @@ export async function journalDialog(entry = null, ctx = null, presetDate = null)
   } }, icon('camera'), photoId ? '更换照片' : '选择照片');
   refreshPhotoPreview();
   const catSel = h('select', { class: 'input' }, h('option', { value: '' }, '不分类'), CATS.map((c) => h('option', { value: c.id, selected: c.id === j.category }, c.name)));
+  let dialogFinalized = false;
   openModal({
-    title: isNew ? '写手账' : '编辑手账',
+    title: isNew ? '记录心情' : '编辑心情',
     content: h('div', { class: 'form-list' },
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '日期（可补记往日）'), dateInp),
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '心情'), moodPick),
@@ -368,15 +397,16 @@ export async function journalDialog(entry = null, ctx = null, presetDate = null)
     actions: [
       isNew ? null : {
         label: '删除', cls: 'btn-danger', onClick: async (c) => {
-          if (await confirmDlg('删除手账', '这条手账和相关奖励会同步修正。', { danger: true, okLabel: '删除' })) {
+          if (await confirmDlg('删除心情记录', '这条心情记录和相关奖励会同步修正。', { danger: true, okLabel: '删除' })) {
             await deleteJournal(j);
             for (const id of tempPhotoIds) await del('photos',id).catch(()=>{});
-            if (previewUrl) URL.revokeObjectURL(previewUrl);
+            if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl=null; }
+            dialogFinalized = true;
             c(); ctx && ctx.rerender();
           }
         },
       },
-      { label: '取消', onClick: async (c) => { for (const id of tempPhotoIds) await del('photos',id).catch(()=>{}); if (previewUrl) URL.revokeObjectURL(previewUrl); c(); } },
+      { label: '取消', onClick: async (c) => { for (const id of tempPhotoIds) await del('photos',id).catch(()=>{}); tempPhotoIds.clear(); if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl=null; } dialogFinalized=true; c(); } },
       {
         label: '保存', cls: 'btn-primary', onClick: async (c) => {
           if (!ta.value.trim() && !photoId && mood === j.mood && !isNew) { c(); return; }
@@ -389,12 +419,18 @@ export async function journalDialog(entry = null, ctx = null, presetDate = null)
           tempPhotoIds.clear();
           if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl=null; }
           if (res) queueSettle([res]);
-          toast('手账已保存到「记录」', { ic:'check' });
+          toast('心情已保存到「记录」', { ic:'check' });
+          dialogFinalized=true;
           c(); ctx && ctx.rerender();
           window.dispatchEvent(new CustomEvent('tjmbg:rerender'));
         },
       },
     ],
+    onClose: () => {
+      if (dialogFinalized) return;
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      for (const id of tempPhotoIds) del('photos', id).catch(()=>{});
+    },
   });
 }
 async function compressPhoto(file) {
@@ -419,77 +455,39 @@ async function compressPhoto(file) {
 // ================= 账本 =================
 async function renderLedger(box, ctx) {
   const settings = await loadKV('settings');
-  const rows = (await all('ledger')).filter((l) => monthKeyOf(l.dateKey) === curMonth).sort((a, b) => b.ts - a.ts);
-  const out = rows.filter((r) => r.type === 'out').reduce((a, r) => a + r.amount, 0);
-  const inc = rows.filter((r) => r.type === 'in').reduce((a, r) => a + r.amount, 0);
-  const budget = (settings.ledgerBudget || {})[curMonth] || 0;
-  const cur = settings.currency || '¥';
-  const head = h('div', { class: 'cal-head' },
-    h('button', { class: 'cal-nav', onclick: () => { curMonth = addMonthsKey(curMonth + '-01', -1).slice(0, 7); ctx.rerender(); } }, icon('back')),
-    h('div', { class: 'cal-title' }, monthLabel(curMonth)),
-    h('button', { class: 'cal-nav', onclick: () => { curMonth = addMonthsKey(curMonth + '-01', 1).slice(0, 7); ctx.rerender(); } }, icon('right')));
-  const sumRow = h('div', { class: 'ledger-sum' },
-    h('div', { class: 'stat-cell' }, h('div', { class: 'v num', style: 'color:var(--primary-deep)' }, fmtMoney(inc, cur)), h('div', { class: 'k' }, '收入')),
-    h('div', { class: 'stat-cell' }, h('div', { class: 'v num', style: 'color:var(--accent)' }, fmtMoney(out, cur)), h('div', { class: 'k' }, '支出')),
-    h('div', { class: 'stat-cell' }, h('div', { class: 'v num' }, fmtMoney(inc - out, cur)), h('div', { class: 'k' }, '本月差额')));
-  const budgetRow = h('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:10px' },
-    h('span', { class: 'tag' }, budget ? `预算 ${fmtMoney(budget, cur)}` : '未设预算'),
-    budget ? h('div', { class: 'bar', style: 'flex:1' }, h('i', { style: `width:${Math.min(100, Math.round((out / budget) * 100))}%` })) : null,
-    h('button', { class: 'btn btn-ghost btn-sm', onclick: async () => {
-      const v = await formDlg({ title: '月度预算', fields: [{ key: 'b', label: `${monthLabel(curMonth)}支出预算（元，留空清除）`, type: 'number', value: budget ? budget / 100 : '' }] });
-      if (v === null) return;
-      const b = v.b === '' ? 0 : Math.round(parseFloat(v.b) * 100) || 0;
-      const nb = { ...(settings.ledgerBudget || {}) };
-      if (b > 0) nb[curMonth] = b; else delete nb[curMonth];
-      settings.ledgerBudget = nb;
-      await saveKV('settings', settings);
-      toast(b ? '预算已设置' : '预算已清除');
-      ctx.rerender();
-    } }, budget ? '调整' : '设置'));
-  // 分类分布（支出）
-  const byCat = new Map();
-  for (const r of rows) if (r.type === 'out') byCat.set(r.category, (byCat.get(r.category) || 0) + r.amount);
-  const catBox = h('div', { style: 'margin-bottom:10px' });
-  const sorted = [...byCat.entries()].sort((a, b) => b[1] - a[1]);
-  if (sorted.length) {
-    for (const [c, v] of sorted.slice(0, 6)) {
-      catBox.append(h('div', { class: 'cat-bar-row' },
-        h('span', { class: 'cb-label' }, c),
-        h('div', { class: 'bar' }, h('i', { style: `width:${Math.round((v / out) * 100)}%;background:var(--accent)` })),
-        h('span', { class: 'cb-val num' }, fmtMoney(v, cur))));
-    }
-  }
-  // 近6个月趋势
-  const trendBox = h('div', { style: 'display:flex;align-items:flex-end;gap:6px;height:80px;margin:6px 0 4px' });
-  const months = [];
-  for (let i = 5; i >= 0; i--) months.push(addMonthsKey(curMonth + '-01', -i).slice(0, 7));
   const allRows = await all('ledger');
-  const maxV = Math.max(1, ...months.map((mk) => allRows.filter((r) => monthKeyOf(r.dateKey) === mk && r.type === 'out').reduce((a, r) => a + r.amount, 0)));
-  for (const mk of months) {
-    const v = allRows.filter((r) => monthKeyOf(r.dateKey) === mk && r.type === 'out').reduce((a, r) => a + r.amount, 0);
-    trendBox.append(h('div', { style: 'flex:1;text-align:center' },
-      h('div', { style: `height:${Math.max(4, Math.round((v / maxV) * 64))}px;background:${mk === curMonth ? 'var(--accent)' : 'var(--primary-soft)'};border-radius:6px 6px 2px 2px` }),
-      h('div', { style: 'font-size:9.5px;color:var(--muted);margin-top:2px' }, mk.slice(5) + '月')));
-  }
-  const card = h('div', { class: 'card' }, head, sumRow, budgetRow,
-    sorted.length ? h('div', { class: 'card-title' }, '支出分类') : null, catBox,
-    h('div', { class: 'card-title' }, '近6个月支出趋势'), trendBox,
-    h('button', { class: 'btn btn-primary btn-block btn-sm', onclick: () => quickLedgerDialog() }, icon('plus'), '记一笔'));
-  const listCard = h('div', { class: 'card' }, h('div', { class: 'card-title' }, '账目明细'));
-  if (!rows.length) listCard.append(h('div', { class: 'empty' }, '本月还没有账目'));
-  for (const r of rows) {
-    listCard.append(h('div', { class: 'row-item' },
-      h('div', { class: 'row-main' },
-        h('div', { class: 'row-title', style: 'font-size:13.5px' }, r.category),
-        h('div', { class: 'row-sub' }, h('span', null, fmtCN(r.dateKey)), r.note ? h('span', null, r.note) : null)),
-      h('span', { class: 'row-pts' + (r.type === 'out' ? ' neg' : '') }, (r.type === 'in' ? '+' : '-') + fmtMoney(r.amount, cur).replace(cur, '')),
-      h('button', { class: 'iconbtn', style: 'width:34px;height:34px;font-size:16px', onclick: async () => {
-        await actionSheet(`${r.category} ${fmtMoney(r.amount, cur)}`, [
-          { ic: 'trash', label: '删除这笔账', danger: true, onClick: async () => { await deleteLedgerEntry(r); toast('已删除，统计与奖励同步修正'); ctx.rerender(); } },
-        ]);
-      } }, icon('settings'))));
-  }
-  box.append(card, listCard);
+  const rows = allRows.filter((l) => monthKeyOf(l.dateKey) === curMonth).sort((a, b) => (b.dateKey||'').localeCompare(a.dateKey||'') || (b.ts||0)-(a.ts||0));
+  const out = rows.filter(r=>r.type==='out').reduce((n,r)=>n+r.amount,0), inc=rows.filter(r=>r.type==='in').reduce((n,r)=>n+r.amount,0);
+  const budget=(settings.ledgerBudget||{})[curMonth]||0, cur=settings.currency||'¥';
+  const head=h('div',{class:'ledger-analysis-head'},
+    h('button',{class:'cal-nav','aria-label':'上个月',onclick:()=>{curMonth=addMonthsKey(curMonth+'-01',-1).slice(0,7);ctx.rerender('footprint?tab=data&view=ledger');}},icon('back')),
+    h('div',null,h('b',null,monthLabel(curMonth)),h('span',null,'账本分析')),
+    h('button',{class:'cal-nav','aria-label':'下个月',onclick:()=>{curMonth=addMonthsKey(curMonth+'-01',1).slice(0,7);ctx.rerender('footprint?tab=data&view=ledger');}},icon('right')));
+  const summary=h('div',{class:'ledger-analysis-summary'},
+    ledgerMetric('收入',fmtMoney(inc,cur),'income'),ledgerMetric('支出',fmtMoney(out,cur),'out'),ledgerMetric('结余',fmtMoney(inc-out,cur),'balance'));
+  const byCat=new Map();for(const r of rows)if(r.type==='out')byCat.set(r.category,(byCat.get(r.category)||0)+r.amount);
+  const sorted=[...byCat.entries()].sort((a,b)=>b[1]-a[1]);
+  const palette=['#d98d72','#e6b85f','#7c9b7e','#7b94b2','#ad8aa3','#8ca8a0'];let acc=0;const segments=[];
+  for(let i=0;i<sorted.length;i++){const pct=out?sorted[i][1]/out*100:0;segments.push(`${palette[i%palette.length]} ${acc}% ${acc+pct}%`);acc+=pct;}
+  const donut=h('div',{class:'ledger-donut',style:`--ledger-gradient:${segments.length?`conic-gradient(${segments.join(',')})`:'conic-gradient(var(--surface2) 0 100%)'}`},h('div',null,h('b',null,out?fmtMoney(out,cur):'0'),h('span',null,'本月支出')));
+  const legend=h('div',{class:'ledger-legend'});sorted.slice(0,6).forEach(([cat,val],i)=>legend.append(h('div',null,h('i',{style:`background:${palette[i%palette.length]}`}),h('span',null,cat),h('b',null,`${out?Math.round(val/out*100):0}% · ${fmtMoney(val,cur)}`))));
+  if(!sorted.length)legend.append(h('p',{class:'paper-empty'},'本月还没有支出分类。'));
+  const budgetBox=h('div',{class:'ledger-budget'},h('div',null,h('b',null,'月度预算'),h('span',null,budget?`${fmtMoney(out,cur)} / ${fmtMoney(budget,cur)}`:'还未设置预算')),
+    budget?h('div',{class:'bar'},h('i',{style:`width:${Math.min(100,Math.round(out/budget*100))}%`})):null,
+    h('button',{class:'btn btn-ghost btn-sm',onclick:async()=>{const v=await formDlg({title:'月度预算',fields:[{key:'b',label:`${monthLabel(curMonth)}支出预算（元，留空清除）`,type:'number',value:budget?budget/100:''}]});if(v===null)return;const b=v.b===''?0:Math.round(parseFloat(v.b)*100)||0;const nb={...(settings.ledgerBudget||{})};if(b>0)nb[curMonth]=b;else delete nb[curMonth];settings.ledgerBudget=nb;await saveKV('settings',settings);ctx.rerender('footprint?tab=data&view=ledger');}},budget?'调整预算':'设置预算'));
+  const months=[];for(let i=5;i>=0;i--)months.push(addMonthsKey(curMonth+'-01',-i).slice(0,7));
+  const totals=months.map(mk=>allRows.filter(r=>r.type==='out'&&monthKeyOf(r.dateKey)===mk).reduce((n,r)=>n+r.amount,0)),max=Math.max(1,...totals);
+  const trend=h('div',{class:'ledger-trend'});months.forEach((mk,i)=>trend.append(h('div',null,h('span',{style:`height:${Math.max(4,totals[i]/max*78)}px`}),h('small',null,mk.slice(5)+'月'),h('b',null,totals[i]?fmtMoney(totals[i],cur):'0'))));
+  const biggest=sorted[0];
+  const analysis=h('section',{class:'card ledger-analysis-card'},head,summary,h('div',{class:'ledger-analysis-main'},donut,legend),budgetBox,
+    h('div',{class:'ledger-section-title'},'近 6 个月支出趋势'),trend,
+    biggest?h('p',{class:'ledger-insight'},`本月支出最多的是「${biggest[0]}」，占 ${Math.round(biggest[1]/out*100)}%。`):h('p',{class:'ledger-insight'},'开始记账后，这里会自动生成真实的分类和趋势分析。'),
+    h('button',{class:'btn btn-primary btn-block',onclick:()=>quickLedgerDialog()},icon('plus'),'记一笔'));
+  const listCard=h('section',{class:'card ledger-list-card'},h('div',{class:'card-title'},'账目明细',h('span',{class:'tag'},`${rows.length} 笔`)));
+  if(!rows.length)listCard.append(h('div',{class:'empty'},'本月还没有账目'));
+  rows.forEach(r=>listCard.append(h('div',{class:'row-item'},h('div',{class:'row-main'},h('div',{class:'row-title'},r.category),h('div',{class:'row-sub'},h('span',null,fmtCN(r.dateKey)),r.note?h('span',null,r.note):null)),h('span',{class:'row-pts'+(r.type==='out'?' neg':'')},(r.type==='in'?'+':'-')+fmtMoney(r.amount,cur).replace(cur,'')),h('button',{class:'iconbtn','aria-label':'账目操作',onclick:async()=>{await actionSheet(`${r.category} ${fmtMoney(r.amount,cur)}`,[{ic:'trash',label:'删除这笔账',danger:true,onClick:async()=>{await deleteLedgerEntry(r);toast('已删除，统计与奖励同步修正');ctx.rerender('footprint?tab=data&view=ledger');}}]);}},icon('settings')))));
+  box.append(analysis,listCard);
+  function ledgerMetric(label,value,tone){return h('div',{class:'ledger-metric '+tone},h('span',null,label),h('b',{class:'num'},value));}
 }
 
 // ================= 统计 =================
@@ -545,9 +543,7 @@ async function renderReview(box, ctx) {
       mkDone ? h('span', { class: 'row-sub' }, '本月回顾已确认') :
         h('button', { class: 'btn btn-soft btn-sm', style: 'flex:1', onclick: async () => { await confirmReview('month', mk); toast('已确认月度回顾'); ctx.rerender(); } }, '确认月度回顾'),
       h('button', { class: 'btn btn-warn btn-sm', style: 'flex:1', onclick: () => shareCard(mk) }, '生成月度分享卡')));
-  box.append(weekCard, monthCard,
-    h('div', { class: 'form-hint', style: 'text-align:center;padding:0 12px;line-height:1.8' },
-      '分享卡默认不包含账目金额与手账正文，只有天数、专注和徽章这些想展示的成就。'));
+  const reviewGroup=h('section',{class:'data-review-group'},h('div',{class:'data-section-title'},h('b',null,'回顾'),h('span',null,'把周与月放在同一组，不再分散成多个功能区块')),weekCard,monthCard,h('div',{class:'form-hint'},'分享卡默认不包含账目金额与手账正文。'));box.append(reviewGroup);
 }
 
 // 月度分享卡：canvas 绘制 → 下载 PNG

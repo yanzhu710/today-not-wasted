@@ -188,10 +188,10 @@ export async function doHabitUndo(habit, dk = todayKey()) {
   statsDirty();
   return true;
 }
-export async function addQuickRecord({ dateKey: dk = todayKey(), category, count = null, minutes = null, note = '', title = null }) {
-  const rec = { id: uid('qr'), dateKey: dk, ts: Date.now(), category, count, minutes, note, title: title || null };
+export async function addQuickRecord({ dateKey: dk = todayKey(), category, count = null, minutes = null, startTime = null, endTime = null, note = '', title = null }) {
+  const rec = { id: uid('qr'), dateKey: dk, ts: Date.now(), category, count, minutes, startTime, endTime, note, title: title || null };
   await put('quick_records', rec);
-  const ev = await addEvent({ kind: 'quick', refId: rec.id, category, minutes, dateKey: dk });
+  const ev = await addEvent({ kind: 'quick', refId: rec.id, category, minutes, dateKey: dk, meta: { startTime, endTime } });
   const p = await grantPoints({ delta: POINTS.quick.delta, reason: `快捷记录「${title || catName(category)}」`, kind: 'quick', dateKey: dk, sourceEventId: ev.id });
   sound.play('complete');
   statsDirty();
@@ -204,11 +204,12 @@ export async function deleteQuickRecord(rec) {
 }
 export async function saveFocusSession({ minutes, mode, targetMin = null, linkedType = null, linkedId = null, category = null, note = '', startedTs = null, endedTs = null }) {
   const valid = minutes >= 5;
-  const s = { id: uid('fx'), dateKey: todayKey(), ts: Date.now(), startedTs, endedTs, minutes, valid, mode, targetMin, linkedType, linkedId, note };
+  const dk = Number.isFinite(Number(startedTs)) ? dateKey(new Date(Number(startedTs))) : todayKey();
+  const s = { id: uid('fx'), dateKey: dk, ts: Date.now(), startedTs, endedTs, minutes, valid, mode, targetMin, linkedType, linkedId, note };
   await put('focus_sessions', s);
   let p = 0, g = 0;
   if (valid) {
-    const ev = await addEvent({ kind: 'focus', refId: s.id, minutes, category, note });
+    const ev = await addEvent({ kind: 'focus', refId: s.id, minutes, category, note, dateKey: dk, meta: { startedTs, endedTs } });
     const tier = POINTS.focusTier.filter(([m]) => minutes >= m).pop();
     p = await grantPoints({ delta: tier ? tier[1] : 0, reason: `专注 ${fmtMin(minutes)}`, kind: 'focus', sourceEventId: ev.id });
     if (minutes >= 30) g = await grantGrowth(GROWTH.focus30, { reason: '有效专注' });

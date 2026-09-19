@@ -11,6 +11,7 @@ import { habitDueOn, habitFreqLabel } from './plan.js';
 import * as sound from '../core/sound.js';
 import { badgeArt } from '../core/art.js';
 import { openSharePanel } from '../core/share.js';
+import { timeRangeField } from '../ui/time-range.js';
 
 function diffDay(a, b) {
   const da = new Date(a + 'T00:00:00'), db = new Date(b + 'T00:00:00');
@@ -20,8 +21,8 @@ function diffDay(a, b) {
 export async function renderToday(view, ctx) {
   const dk = todayKey();
   await ensureInstances(dk);
-  const [tasks, habits, appMeta, summary, todayLogs, pets, ledgerRows, journalRows] = await Promise.all([
-    all('tasks'), all('habits'), loadKV('app_meta'), todaySummary(),
+  const [tasks, habits, goals, appMeta, summary, todayLogs, pets, ledgerRows, journalRows] = await Promise.all([
+    all('tasks'), all('habits'), all('goals'), loadKV('app_meta'), todaySummary(),
     allByIndex('habit_logs', 'dateKey', dk), all('pets'),
     allByIndex('ledger', 'dateKey', dk), allByIndex('journal', 'dateKey', dk),
   ]);
@@ -65,14 +66,19 @@ export async function renderToday(view, ctx) {
   }
 
   const primaryActions = [
-    ['quick','记录','记下已经发生的小事', async()=>quickRecordDialog()],
-    ['focus','专注','高效又专注', ()=>openFocus()],
-    ['journal','手账','写下此刻心情', async()=> (await import('./footprint.js')).journalDialog()],
-    ['ledger','记账','收支简单明了', ()=>quickLedgerDialog()],
+    { ic:'quick', label:'记录', action:()=>quickRecordDialog(), href:'footprint?tab=timeline&filter=quick' },
+    { ic:'focus', label:'专注', action:()=>openFocus(), href:'footprint?tab=timeline&filter=focus' },
+    { ic:'heart', label:'心情', action:async()=> (await import('./footprint.js')).journalDialog(), href:'footprint?tab=timeline&filter=journal' },
+    { ic:'ledger', label:'记账', action:()=>quickLedgerDialog(), href:'footprint?tab=timeline&filter=ledger' },
   ];
-  view.append(h('section', { class:'ref-action-grid' }, primaryActions.map(([ic,label,sub,fn],i)=>
-    h('button', { class:`ref-action-card tone-${i}`, onclick:fn },
-      h('span', { class:'ref-action-blob' }, icon(ic)), h('b',null,label), h('small',null,sub)))));
+  const actionGrid=h('section',{class:'ref-action-grid'});
+  primaryActions.forEach((item,i)=>{
+    const card=h('div',{class:`ref-action-card tone-${i}`},
+      h('button',{class:'ref-action-main','aria-label':item.label,onclick:item.action},h('span',{class:'ref-action-blob'},icon(item.ic)),h('b',null,item.label)),
+      h('button',{class:'ref-action-history','aria-label':`查看${item.label}记录`,onclick:()=>{location.hash='#/'+item.href;}},icon('book')));
+    actionGrid.append(card);
+  });
+  view.append(actionGrid);
 
 
   const overview = h('section',{class:'card ref-overview-card'},
@@ -94,32 +100,31 @@ export async function renderToday(view, ctx) {
   }
   const badgeRoot=badgeSlot.firstElementChild;
   badgeRoot?.classList.add('ref-dashboard-card','ref-badge-card');
-  view.append(h('div',{class:'ref-dashboard-grid'},badgeSlot,overview));
-
-  const taskCard=h('section',{class:'card ref-compact-card ref-task-card'},
-    h('div',{class:'ref-card-head'},h('h2',null,'今日待办'),h('button',{class:'more',onclick:()=>{location.hash='#/plan?tab=tasks';}},`${done.length}/${todayTasks.length} 已完成`,icon('right'))));
-  if(!todayTasks.length) taskCard.append(h('p',{class:'paper-empty'},'今天还没有待办。'));
-  else {
-    const shown=[...undone,...done].slice(0,5);
-    shown.forEach(t=>taskCard.append(refTaskRow(t,tplById,ctx)));
-    if(todayTasks.length>5) taskCard.append(h('button',{class:'paper-text-link',onclick:()=>{location.hash='#/plan?tab=tasks';}},`再看 ${todayTasks.length-5} 件`,icon('right')));
-  }
-
   const due=habits.filter(hb=>!hb.paused&&habitDueOn(hb,dk));
   const habitDone=due.filter(hb=>logByHabit.has(hb.id)).length;
-  const habitCard=h('section',{class:'card ref-compact-card ref-habit-card'},
-    h('div',{class:'ref-card-head'},h('h2',null,'今日习惯'),h('button',{class:'more',onclick:()=>{location.hash='#/plan?tab=habits';}},`${habitDone}/${due.length}`,icon('right'))));
-  if(!due.length) habitCard.append(h('p',{class:'paper-empty'},'今天没有需要打卡的习惯。'));
-  else due.slice(0,5).forEach(hb=>{
-    const checked=logByHabit.has(hb.id);
-    habitCard.append(h('div',{class:'ref-habit-row'},
-      h('button',{class:'checkbtn'+(checked?' on':''),'aria-label':(checked?'撤销':'完成')+hb.name,onclick:async()=>{
-        if(checked) await doHabitUndo(hb,dk); else { const result=await doHabitDone(hb,dk); if(result) queueSettle([result]); }
-        await ctx.rerender();
-      }},icon('check')),
-      h('span',{class:checked?'done':''},hb.name),h('small',null,habitFreqLabel(hb))));
-  });
-  view.append(h('div',{class:'ref-lower-stack'},taskCard,habitCard));
+  const activeGoals=goals.filter(g=>g.status!=='done').length;
+  const planCard=h('section',{class:'card today-plan-card'},
+    h('div',{class:'today-plan-head'},
+      h('div',null,h('h2',null,'今日计划'),h('p',null,'今天要做的事，都在这里。')),
+      h('button',{class:'paper-text-link',onclick:()=>{location.hash='#/plan?tab=tasks';}},'进入计划',icon('right'))),
+    h('div',{class:'today-plan-summary'},
+      h('span',null,h('b',{class:'num'},`${done.length}/${todayTasks.length}`),h('small',null,'待办')),
+      h('span',null,h('b',{class:'num'},`${habitDone}/${due.length}`),h('small',null,'习惯')),
+      h('span',null,h('b',{class:'num'},String(activeGoals)),h('small',null,'进行目标'))),
+    h('div',{class:'today-plan-create'},
+      h('button',{class:'btn btn-soft btn-sm',onclick:()=>taskDialog()},icon('plus'),'新建任务'),
+      h('button',{class:'btn btn-soft btn-sm',onclick:async()=>{const m=await import('./plan.js');m.habitDialog();}},icon('plus'),'新建习惯')));
+  const taskGroup=h('div',{class:'today-plan-group'},h('div',{class:'today-plan-label'},h('b',null,'待办'),h('button',{onclick:()=>{location.hash='#/plan?tab=tasks';}},'全部')));
+  if(!todayTasks.length)taskGroup.append(h('p',{class:'paper-empty'},'今天还没有待办，可以直接新建。'));
+  else [...undone,...done].slice(0,4).forEach(t=>taskGroup.append(refTaskRow(t,tplById,ctx)));
+  const habitGroup=h('div',{class:'today-plan-group'},h('div',{class:'today-plan-label'},h('b',null,'习惯'),h('button',{onclick:()=>{location.hash='#/plan?tab=habits';}},'全部')));
+  if(!due.length)habitGroup.append(h('p',{class:'paper-empty'},'今天没有需要打卡的习惯。'));
+  else due.slice(0,4).forEach(hb=>{const checked=logByHabit.has(hb.id);habitGroup.append(h('div',{class:'ref-habit-row'},
+    h('button',{class:'checkbtn'+(checked?' on':''),'aria-label':(checked?'撤销':'完成')+hb.name,onclick:async()=>{if(checked)await doHabitUndo(hb,dk);else{const result=await doHabitDone(hb,dk);if(result)queueSettle([result]);}await ctx.rerender();}},icon('check')),
+    h('span',{class:checked?'done':''},hb.name),h('small',null,habitFreqLabel(hb))));});
+  planCard.append(taskGroup,habitGroup);view.append(planCard);
+  view.append(h('div',{class:'ref-dashboard-grid'},badgeSlot,overview));
+
   view.append(h('p',{class:'paper-page-note'},'今天没白过 · 把平凡的日子，过成喜欢的样子。'));
 
   function overviewCell(ic,value,label){return h('div',{class:'ref-overview-cell'},h('span',{class:'ref-overview-icon'},icon(ic)),h('div',null,h('b',null,String(value)),h('small',null,label)));}
@@ -213,7 +218,7 @@ export async function taskDialog(task = null) {
     title: isNew ? '新建任务' : '编辑任务',
     content: h('div', { class: 'form-list' },
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '标题'), titleInp),
-      h('div', { class: 'field-row' }, h('div', { class: 'form-item', style: 'flex:1' }, h('span', { class: 'form-label' }, '日期'), dateInp), h('div', { class: 'form-item', style: 'flex:1' }, h('span', { class: 'form-label' }, '预计时长'), estInp)),
+      h('div', { class: 'field-row' }, h('div', { class: 'form-item', style: 'flex:1' }, h('span', { class: 'form-label' }, '日期'), dateInp), h('div', { class: 'form-item', style: 'flex:1' }, h('span', { class: 'form-label' }, '预计用时（计划）'), estInp)),
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '生活分类'), catSel),
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '重复'), repSeg, weekRow, h('span', { class: 'form-hint' }, '重复任务会按规则每天自动出现，可顺延可撤销，不惩罚断签')),
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '子任务'), subTa),
@@ -273,13 +278,13 @@ function repeatDue(rep, dk) {
 }
 
 // ---- 快捷记录弹窗 ----
-export async function quickRecordDialog({ dateKey: recordDate = todayKey() } = {}) {
+export async function quickRecordDialog({ dateKey: recordDate = todayKey(), title = '', category = 'other', count = '', startTime = '', endTime = '', note = '' } = {}) {
   const dateInp = h('input', { class: 'input', type: 'date', value: recordDate });
-  const nameInp = h('input', { class: 'input', placeholder: '例如：陪家人散步（可留空）' });
-  const catSel = h('select', { class: 'input' }, CATS.map((c) => h('option', { value: c.id, selected: c.id === 'other' }, c.name)));
-  const cntInp = h('input', { class: 'input', type: 'number', min: '1', placeholder: '次数（可选）' });
-  const minInp = h('input', { class: 'input', type: 'number', min: '1', placeholder: '时长分钟（可选）' });
-  const noteInp = h('input', { class: 'input', placeholder: '一句话备注（可选）' });
+  const nameInp = h('input', { class: 'input', placeholder: '例如：陪家人散步（可留空）', value:title });
+  const catSel = h('select', { class: 'input' }, CATS.map((c) => h('option', { value: c.id, selected: c.id === category }, c.name)));
+  const cntInp = h('input', { class: 'input', type: 'number', min: '1', placeholder: '次数（可选）', value:count });
+  const timeRange = timeRangeField({start:startTime,end:endTime});
+  const noteInp = h('input', { class: 'input', placeholder: '一句话备注（可选）', value:note });
   const { formDlg } = await import('../core/fx.js');
   const v = await formDlg({
     title: '记录一件小事',
@@ -288,13 +293,16 @@ export async function quickRecordDialog({ dateKey: recordDate = todayKey() } = {
     extra: h('div', { class: 'form-list' },
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '日期'), dateInp),
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '事项名称'), nameInp),
-      h('div', { class: 'field-row' }, h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '分类'), catSel), h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '次数'), cntInp), h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '时长(分)'), minInp)),
+      h('div', { class: 'field-row' }, h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '分类'), catSel), h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '次数'), cntInp)),
+      timeRange.root,
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '备注'), noteInp)),
   });
   if (!v) return;
-  if (!cntInp.value && !minInp.value && !nameInp.value.trim()) { toast('至少填写名称、次数或时长之一', { ic: 'error' }); return; }
+  const range=timeRange.get();
+  if(!range.ok){toast('请同时选择有效的开始和结束时间',{ic:'error'});return;}
+  if (!cntInp.value && !range.minutes && !nameInp.value.trim()) { toast('至少填写名称、次数或实际时间之一', { ic: 'error' }); return; }
   const res = await addQuickRecord({
-    dateKey: dateInp.value || todayKey(), category: catSel.value, count: Number(cntInp.value) || null, minutes: Number(minInp.value) || null,
+    dateKey: dateInp.value || todayKey(), category: catSel.value, count: Number(cntInp.value) || null, minutes: range.minutes, startTime:range.startTime, endTime:range.endTime,
     note: noteInp.value.trim(), title: nameInp.value.trim() || null,
   });
   queueSettle([res]);

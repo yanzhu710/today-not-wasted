@@ -85,7 +85,7 @@ export async function renderMine(view, ctx) {
       h('div', { class: 'stat-cell' }, h('div', { class: 'v' }, hasSW ? 'PWA' : 'Web'), h('div', { class: 'k' }, '离线能力'))),
     h('div', { class: 'row-sub', style: 'margin-top:10px;gap:6px' },
       h('span', { class: 'tag tag-pri' }, `任务 ${taskN}`),
-      h('span', { class: 'tag' }, `日记 ${journalN}`),
+      h('span', { class: 'tag' }, `心情 ${journalN}`),
       h('span', { class: 'tag' }, `照片 ${photoN}`),
       h('span', { class: 'tag tag-acc' }, `Schema v${SCHEMA_VERSION}`)),
     h('div', { class: 'form-hint', style: 'margin-top:8px;line-height:1.8' },

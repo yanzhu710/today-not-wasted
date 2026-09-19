@@ -2,6 +2,7 @@
 import { loadKV, saveKV, all, allByIndex } from '../core/db.js';
 import { saveFocusSession } from '../core/engine.js';
 import { h, icon, fmtClock, fmtMin, todayKey } from '../core/util.js';
+import { timeRangeField, nowTimeValue } from '../ui/time-range.js';
 import { openModal, queueSettle, toast, confirmDlg } from '../core/fx.js';
 import * as sound from '../core/sound.js';
 
@@ -13,7 +14,7 @@ export async function openFocus() {
   let s = await loadState();
   const isNew = !s;
   if (!s || typeof s.startedTs !== 'number' || typeof s.accumMs !== 'number') {
-    s = { mode: 'up', targetMin: null, startedTs: Date.now(), paused: false, accumMs: 0, linkType: null, linkId: null, linkCategory: null, linkLabel: '', done: false };
+    s = { mode: 'up', targetMin: null, startedTs: Date.now(), sessionStartTs: null, paused: false, accumMs: 0, linkType: null, linkId: null, linkCategory: null, linkLabel: '', done: false };
     await setState(s);
   }
   let timer = null;
@@ -67,7 +68,7 @@ export async function openFocus() {
       ctrlRow.append(
         h('button', {
           class: 'btn btn-primary btn-block', onclick: async () => {
-            s.startedTs = Date.now(); s.paused = false; s.accumMs = 0;
+            s.startedTs = Date.now(); s.sessionStartTs = s.startedTs; s.paused = false; s.accumMs = 0;
             const opt = linkSel.selectedOptions[0];
             if (opt && opt.value) { s.linkType = opt.dataset.type; s.linkId = opt.value; s.linkCategory = opt.dataset.cat; s.linkLabel = opt.textContent; }
             await setState(s); sound.play('tap'); started = true; if (optRow) optRow.style.display = 'none'; renderCtrls(); tick();
@@ -122,24 +123,28 @@ export async function openFocus() {
   }
 
   async function endConfirm() {
-    const mins = Math.max(1, Math.round(elapsedOf(s) / 60000));
-    const inp = h('input', { class: 'input', type: 'number', min: '1', value: String(mins) });
+    const fallbackMinutes = Math.max(1, Math.round(elapsedOf(s) / 60000));
+    const startTs = Number(s.sessionStartTs || s.startedTs || (Date.now()-fallbackMinutes*60000));
+    const endTs = Date.now();
+    const range=timeRangeField({start:nowTimeValue(new Date(startTs)),end:nowTimeValue(new Date(endTs)),optional:false,label:'实际专注时间'});
     const note = h('input', { class: 'input', placeholder: '这次专注做了什么（可选）' });
     openModal({
-      title: '确认有效时长',
+      title: '确认专注时间',
       content: h('div', { class: 'form-list' },
-        h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '实际有效专注（分钟）'), inp),
+        range.root,
         h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '备注'), note),
-        h('div', { class: 'form-hint' }, '结束前请核对时长；确认后保存并结算奖励')),
+        h('div', { class: 'form-hint' }, '结束前核对开始和结束时间；系统会自动计算有效时长。少于 5 分钟不会计入有效专注。')),
       actions: [
         { label: '取消', onClick: (c) => c() },
         {
           label: '保存', cls: 'btn-primary', onClick: async (c) => {
-            const minutes = Math.max(0, Number(inp.value) || 0);
-            if (minutes <= 0) { toast('至少专注 1 分钟再保存', { ic: 'error' }); return; }
+            const r=range.get();
+            if(!r.ok || !r.minutes){toast('请选择有效的开始和结束时间',{ic:'error'});return;}
+            const startDay=new Date(startTs);startDay.setHours(Number(r.startTime.slice(0,2)),Number(r.startTime.slice(3,5)),0,0);
+            const finalStart=startDay.getTime();const endDay=new Date(startDay);endDay.setHours(Number(r.endTime.slice(0,2)),Number(r.endTime.slice(3,5)),0,0);if(endDay.getTime()<=finalStart)endDay.setDate(endDay.getDate()+1);
             const res = await saveFocusSession({
-              minutes, mode: s.mode, targetMin: s.targetMin, linkedType: s.linkType, linkedId: s.linkId,
-              category: s.linkCategory, note: note.value.trim(), startedTs: s.startedTs, endedTs: Date.now(),
+              minutes:r.minutes, mode: s.mode, targetMin: s.targetMin, linkedType: s.linkType, linkedId: s.linkId,
+              category: s.linkCategory, note: note.value.trim(), startedTs: finalStart, endedTs: endDay.getTime(),
             });
             await setState(null);
             stopTimer(); c(); modal.close();
@@ -150,6 +155,7 @@ export async function openFocus() {
       ],
     });
   }
+
   async function discard() {
     const ok = await confirmDlg('放弃这次专注？', '不保存任何记录，也不产生积分。', { okLabel: '放弃', danger: true });
     if (!ok) return;

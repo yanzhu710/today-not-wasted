@@ -269,7 +269,7 @@ async function habitMoreSheet(hb, ctx) {
     { ic: 'trash', label: '删除', danger: true, onClick: async () => { if (await confirmDlg('删除习惯', `删除「${hb.name}」？历史打卡会保留在统计里。`, { danger: true, okLabel: '删除' })) { await del('habits', hb.id); ctx.rerender(); } } },
   ]);
 }
-async function habitDialog(hb = null) {
+export async function habitDialog(hb = null) {
   const isNew = !hb;
   const t = hb || { name: '', category: 'health', freq: { type: 'daily' } };
   const nameInp = h('input', { class: 'input', value: t.name || '', placeholder: '习惯名称（必填）', maxlength: '20' });
@@ -434,10 +434,10 @@ function renderInsp(box, ctx) {
         h('button', { class: 'btn btn-ghost btn-sm', onclick: async () => { const insp = await loadKV('inspiration'); if (!insp.favorites.includes(current.t)) insp.favorites.push(current.t); await saveKV('inspiration', insp); toast('已收藏'); drawFav(); } }, '收藏'),
         h('button', {
           class: 'btn btn-primary btn-sm', style: 'flex:1', onclick: async () => {
-            const res = await addQuickRecord({ category: current.cat, minutes: current.min, title: current.t, note: '来自生活灵感' });
-            queueSettle([res]); ctx.rerender();
+            const { quickRecordDialog } = await import('./today.js');
+            await quickRecordDialog({ category: current.cat, title: current.t, note: '来自生活灵感' });
           },
-        }, '开始并记录'))));
+        }, '去记录'))));
   }
   async function drawFav() {
     const insp = await loadKV('inspiration');
@@ -448,7 +448,7 @@ function renderInsp(box, ctx) {
       const item = INSPIRATIONS.find((x) => x.t === t);
       card.append(h('div', { class: 'row-item' },
         h('div', { class: 'row-main' }, h('div', { class: 'row-title' }, t), item ? h('div', { class: 'row-sub' }, `${item.min}分钟 · ${item.d}`) : null),
-        item ? h('button', { class: 'btn btn-soft btn-sm', onclick: async () => { const res = await addQuickRecord({ category: item.cat, minutes: item.min, title: item.t }); queueSettle([res]); ctx.rerender(); } }, '去做') : null,
+        item ? h('button', { class: 'btn btn-soft btn-sm', onclick: async () => { const { quickRecordDialog } = await import('./today.js'); await quickRecordDialog({ category:item.cat, title:item.t }); } }, '去记录') : null,
         h('button', { class: 'iconbtn', style: 'width:34px;height:34px;font-size:16px', onclick: async () => { const insp2 = await loadKV('inspiration'); insp2.favorites = insp2.favorites.filter((x) => x !== t); await saveKV('inspiration', insp2); drawFav(); } }, icon('trash'))));
     }
     favBox.append(card);
