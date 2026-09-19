@@ -54,12 +54,19 @@ function smartCutout(img){
   while(qh<qt){const p=queue[qh++],px=p%w,py=(p/w)|0,pi=p*4;for(const off of dirs){const n=p+off;if(n<0||n>=w*h||bg[n])continue;const nx=n%w,ny=(n/w)|0;if(Math.abs(nx-px)+Math.abs(ny-py)!==1)continue;const ni=n*4;if(d[ni+3]<18){bg[n]=1;queue[qt++]=n;continue;}const dist=nearestBgDistance(d,ni,centers);const local=pixelDist(d,pi,ni);if(dist<=seedT||(dist<=spreadT&&local<58)){bg[n]=1;queue[qt++]=n;}}
   }
   let removed=0;for(const v of bg)removed+=v?1:0;const fraction=removed/(w*h);
-  // A border-connected mask works well for product/pet/food photos. If the photo is very busy,
-  // keep a rounded-poster fallback rather than silently deleting parts of the subject.
-  if(fraction<.055||fraction>.93)return {canvas:c,mode:'poster',confidence:fraction};
+  // Be conservative: a wrong cutout is worse than keeping some background. Busy or low-background
+  // photos fall back to a poster, and the detected background is pulled 4px away from the subject.
+  if(fraction<.10||fraction>.88)return {canvas:c,mode:'poster',confidence:fraction};
+  const safe=bg.slice();
+  const radius=Math.max(2,Math.round(Math.min(w,h)*.006));
+  for(let y=radius;y<h-radius;y++)for(let x=radius;x<w-radius;x++){
+    const p=y*w+x;if(!bg[p])continue;let nearSubject=false;
+    for(let yy=-radius;yy<=radius&&!nearSubject;yy++)for(let xx=-radius;xx<=radius;xx++){if(!bg[(y+yy)*w+x+xx]){nearSubject=true;break;}}
+    if(nearSubject)safe[p]=0;
+  }
   const edge=new Uint8Array(w*h);
-  for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const p=y*w+x;if(bg[p])continue;if(bg[p-1]||bg[p+1]||bg[p-w]||bg[p+w])edge[p]=1;}
-  for(let p=0;p<w*h;p++){const a=p*4;if(bg[p])d[a+3]=0;else if(edge[p])d[a+3]=185;else d[a+3]=255;}
+  for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const p=y*w+x;if(safe[p])continue;if(safe[p-1]||safe[p+1]||safe[p-w]||safe[p+w])edge[p]=1;}
+  for(let p=0;p<w*h;p++){const a=p*4;if(safe[p])d[a+3]=0;else if(edge[p])d[a+3]=225;else d[a+3]=255;}
   ctx.clearRect(0,0,w,h);ctx.putImageData(im,0,0);
   // very small blur only on alpha edge: draw the cutout through a filtered staging canvas.
   const f=document.createElement('canvas');f.width=w;f.height=h;const fx=f.getContext('2d');fx.filter='blur(.55px)';fx.drawImage(c,0,0);fx.filter='none';
@@ -71,20 +78,21 @@ function composeSticker(source,mode){
   else {const x=pad,y=pad,w=size-pad*2,h=size-pad*2;b.save();roundedRect(b,x,y,w,h,58);b.clip();drawFitted(b,source,x,y,w,h);b.restore();}
   const out=document.createElement('canvas');out.width=size;out.height=size;const o=out.getContext('2d');
   // irregular white outline: multiple slightly different radii make it feel hand-cut instead of vector-perfect.
-  for(let deg=0;deg<360;deg+=10){const a=deg*Math.PI/180;const r=23+Math.sin(deg*.41)*2.8+((deg/10)%3-1)*1.2;o.globalAlpha=.98;o.drawImage(base,Math.cos(a)*r,Math.sin(a)*r);}
+  for(let deg=0;deg<360;deg+=10){const a=deg*Math.PI/180;const r=18+Math.sin(deg*.41)*2.1+((deg/10)%3-1)*.8;o.globalAlpha=.98;o.drawImage(base,Math.cos(a)*r,Math.sin(a)*r);}
   o.globalCompositeOperation='source-in';o.globalAlpha=1;o.fillStyle='#fffdf8';o.fillRect(0,0,size,size);o.globalCompositeOperation='source-over';
   // warm pencil-like outer echo.
   o.globalAlpha=.25;o.strokeStyle='#8f8068';o.lineWidth=2;o.setLineDash([8,10]);roundedRect(o,pad-28,pad-28,size-2*(pad-28),size-2*(pad-28),74);o.stroke();o.setLineDash([]);o.globalAlpha=1;
   o.drawImage(base,0,0);
-  o.strokeStyle='rgba(255,253,248,.98)';o.lineWidth=9;o.lineCap='round';
+  o.strokeStyle='rgba(255,253,248,.98)';o.lineWidth=6;o.lineCap='round';
   const marks=[[91,136,-1],[622,161,1],[111,581,1],[610,558,-1]];for(const [x,y,s] of marks){o.beginPath();o.moveTo(x-14,y);o.lineTo(x+14,y+s*3);o.moveTo(x+2,y-15);o.lineTo(x-2,y+15);o.stroke();}
   return out;
 }
-export async function saveRewardSticker(file){
+export async function saveRewardSticker(file,{mode:preferred='auto'}={}){
   if(!file||!file.type?.startsWith('image/'))throw new Error('请选择图片文件');
   if(file.size>18*1024*1024)throw new Error('图片太大，请选择 18MB 以内的图片');
   const img=await decodeFile(file);let source=img,mode='alpha',confidence=1;
-  if(!hasUsefulAlpha(img)){const result=smartCutout(img);source=result.canvas;mode=result.mode;confidence=result.confidence;}
+  if(preferred==='poster'){mode='poster';confidence=1;}
+  else if(!hasUsefulAlpha(img)){const result=smartCutout(img);source=result.canvas;mode=result.mode;confidence=result.confidence;}
   const out=composeSticker(source,mode);const blob=await blobOf(out,'image/png');if(!blob)throw new Error('图片处理失败');
   const thumbCanvas=document.createElement('canvas');thumbCanvas.width=360;thumbCanvas.height=360;const t=thumbCanvas.getContext('2d');t.imageSmoothingEnabled=true;t.imageSmoothingQuality='high';t.drawImage(out,0,0,360,360);const thumb=await blobOf(thumbCanvas,'image/png');
   const id=uid('rwimg');await put('photos',{id,blob,thumb:thumb||blob,kind:'reward-sticker',cutoutMode:mode,cutoutConfidence:confidence,createdAt:Date.now()});return id;

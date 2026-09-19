@@ -18,6 +18,7 @@ export async function renderHome(view, ctx) {
   const tab = ['home','badges','rewards'].includes(rawTab) ? rawTab : (legacy[rawTab] || 'home');
   let rewardSub = ctx.routeParams?.get('sub') || (rawTab === 'bag' ? 'owned' : 'shop');
   if (!['shop','custom','owned'].includes(rewardSub)) rewardSub = 'shop';
+  if (legacy[rawTab]) history.replaceState(null,'','#/home?tab=rewards&sub='+rewardSub);
   view.replaceChildren();
   view.dataset.homeTab = tab;
   view.append(routeTabs({
@@ -26,7 +27,7 @@ export async function renderHome(view, ctx) {
     items: [
       { id:'home', label:'伙伴', href:'home?tab=home' },
       { id:'badges', label:'徽章', href:'home?tab=badges' },
-      { id:'rewards', label:'奖励', href:'home?tab=rewards&sub=shop' },
+      { id:'rewards', label:'商城', href:'home?tab=rewards&sub=shop' },
     ],
   }));
   const box = h('div');
@@ -49,8 +50,8 @@ async function renderRewardCenter(box, ctx, sub) {
   box.append(h('section',{class:'card reward-center-head reward-art-banner'},
     h('div',{class:'reward-banner-copy'},
       h('span',{class:'reward-banner-kicker'},'REWARD CORNER'),
-      h('div',{class:'card-title'},icon('gift'),'奖励中心',h('span',{class:'reward-balance num'},balance()+' 积分')),
-      h('p',{class:'row-sub'},'把认真生活换成一点喜欢的东西。这里不是任务清单，是给自己的小期待。'),
+      h('div',{class:'card-title'},icon('gift'),'商城',h('span',{class:'reward-balance num'},balance()+' 积分')),
+      h('p',{class:'row-sub'},'把认真生活换成一点喜欢的东西。道具、奖励和已经兑换的收藏都在这里。'),
       h('div',{class:'reward-banner-tags'},h('span',null,'努力有回声'),h('span',null,'小小奖励也值得'))),
     rewardPet ? h('div',{class:'reward-banner-pet'},rewardPet) : h('div',{class:'reward-banner-gift','aria-hidden':'true'},'🎁')));
   box.append(routeTabs({
@@ -58,9 +59,9 @@ async function renderRewardCenter(box, ctx, sub) {
     ariaLabel:'奖励分类',
     className:'reward-subtabs',
     items:[
-      {id:'shop',label:'商城',href:'home?tab=rewards&sub=shop'},
-      {id:'custom',label:'制作',href:'home?tab=rewards&sub=custom'},
-      {id:'owned',label:'已拥有',href:'home?tab=rewards&sub=owned'},
+      {id:'shop',label:'道具',href:'home?tab=rewards&sub=shop'},
+      {id:'custom',label:'自定义奖励',href:'home?tab=rewards&sub=custom'},
+      {id:'owned',label:'我的物品',href:'home?tab=rewards&sub=owned'},
     ],
   }));
   if (sub === 'custom') await renderCustomRewards(box, ctx);
@@ -69,65 +70,67 @@ async function renderRewardCenter(box, ctx, sub) {
 }
 
 async function renderCustomRewards(box, ctx) {
-  const rows = (await all('custom_rewards')).sort((a,b)=>(Number(b.createdAt)||0)-(Number(a.createdAt)||0));
-  const addBtn = h('button',{class:'btn btn-primary btn-sm reward-add-btn',onclick:()=>openCustomRewardDialog(ctx)},icon('plus'),'制作我的奖励');
-  box.append(h('section',{class:'card reward-custom-hero'},
+  const rows = (await all('custom_rewards')).filter(r=>!r.redeemedAt&&!r.fulfilledAt&&!r.doneAt).sort((a,b)=>(Number(b.createdAt)||0)-(Number(a.createdAt)||0));
+  const addBtn = h('button',{class:'btn btn-primary btn-sm reward-add-btn',onclick:()=>openCustomRewardDialog(ctx)},icon('plus'),'制作新奖励');
+  box.append(h('section',{class:'reward-custom-hero reward-blend-section'},
     h('div',{class:'reward-custom-copy'},
-      h('span',{class:'reward-custom-kicker'},'MAKE YOUR STICKER'),
-      h('b',null,'把喜欢的东西做成自己的小周边'),
-      h('p',null,'图片只在本机处理：自动识别主体、去除相近背景、加手绘白边，再上架到你的奖励商城。'),
-      h('div',{class:'reward-feature-chips'},h('span',null,'✓ 自动抠图'),h('span',null,'✓ 手绘白边'),h('span',null,'✓ 本机处理'))),
+      h('span',{class:'reward-custom-kicker'},'MY REWARD'),
+      h('b',null,'把喜欢的东西做成自己的奖励'),
+      h('p',null,'上传一张喜欢的图片，把它做成带白边的贴纸奖励。图片只保存在这台设备上。'),
+      h('div',{class:'reward-feature-chips'},h('span',null,'✓ 保护主体'),h('span',null,'✓ 手绘白边'),h('span',null,'✓ 本机保存'))),
     addBtn));
-  if(!rows.length){box.append(h('section',{class:'card'},h('div',{class:'empty'},'还没有自定义奖励。可以上传一张喜欢的图片，做成第一件奖励周边。')));return;}
-  const available=h('section',{class:'card'},h('div',{class:'card-title'},'已上架商城'));
-  const grid=h('div',{class:'reward-custom-grid'});available.append(grid);
-  const pending=h('section',{class:'card'},h('div',{class:'card-title'},'待兑现'));
-  const done=h('section',{class:'card'},h('div',{class:'card-title'},'已经享受'));
-  let na=0,np=0,nd=0;
-  for(const r of rows){
-    const fulfilled=!!(r.fulfilledAt||r.doneAt), redeemed=fulfilled||!!r.redeemedAt;
-    if(!redeemed){
-      const art=h('div',{class:'reward-sticker-frame'});
-      if(r.photoId){const img=h('img',{alt:r.title,loading:'lazy'});art.append(img);loadRewardImage(img,r.photoId);} else art.append(h('span',{class:'reward-sticker-fallback'},icon('gift')));
-      const card=h('article',{class:'reward-product-card'},art,h('b',null,r.title),h('span',{class:'reward-price'},r.cost?`${r.cost} 积分`:'免费领取'),
-        h('button',{class:'btn btn-soft btn-sm reward-exchange-btn',onclick:()=>ctx.navigate('rewards','shop')},'去商城'),
-        h('button',{class:'reward-delete-link','aria-label':'删除奖励',onclick:async()=>deleteCustomReward(r,ctx)},'删除'));
-      grid.append(card);na++;continue;
-    }
-    const row=h('div',{class:'reward-custom-row reward-history-row'},
-      rewardMiniArt(r),
-      h('div',{class:'row-main'},h('b',{class:'row-title'+(fulfilled?' done':'')},r.title),h('div',{class:'row-sub'},r.cost?`${r.cost} 积分`:'无需积分',fulfilled?' · 已完成':' · 待兑现')),
-      fulfilled?null:h('button',{class:'btn btn-soft btn-sm',onclick:async()=>{r.fulfilledAt=Date.now();r.doneAt=r.fulfilledAt;await put('custom_rewards',r);toast('已记下这份奖励',{ic:'check'});ctx.rerender('home?tab=rewards&sub=custom');}},'已经享受'),
-      h('button',{class:'iconbtn','aria-label':'删除奖励',onclick:()=>deleteCustomReward(r,ctx)},icon('trash')));
-    if(fulfilled){done.append(row);nd++;}else{pending.append(row);np++;}
+  if(!rows.length){
+    const {petEmptyState}=await import('../ui/empty.js');
+    box.append(await petEmptyState('rewards',{actionLabel:'制作第一个奖励',onAction:()=>openCustomRewardDialog(ctx)}));
+    return;
   }
-  if(na)box.append(available);if(np)box.append(pending);if(nd)box.append(done);
+  const section=h('section',{class:'reward-custom-list'},h('div',{class:'section-inline-title'},h('b',null,'已上架的自定义奖励'),h('span',null,`${rows.length} 个`)));
+  const grid=h('div',{class:'reward-custom-grid'});section.append(grid);
+  for(const r of rows){
+    const art=h('div',{class:'reward-sticker-frame'});
+    if(r.photoId){const img=h('img',{alt:r.title,loading:'lazy'});art.append(img);loadRewardImage(img,r.photoId);} else art.append(h('span',{class:'reward-sticker-fallback'},icon('gift')));
+    grid.append(h('article',{class:'reward-product-card'},art,h('b',null,r.title),h('span',{class:'reward-price'},r.cost?`${r.cost} 积分`:'免费领取'),
+      h('button',{class:'btn btn-soft btn-sm reward-exchange-btn',onclick:()=>ctx.navigate('rewards','shop')},'去商城'),
+      h('button',{class:'reward-delete-link','aria-label':'删除奖励',onclick:async()=>deleteCustomReward(r,ctx)},'删除'));
+  }
+  box.append(section);
 }
 
 async function openCustomRewardDialog(ctx){
   const titleInp=h('input',{class:'input',placeholder:'例如：看一场电影',maxlength:'30'});
   const costInp=h('input',{class:'input',type:'number',min:'0',step:'1',placeholder:'例如 80'});
   const status=h('div',{class:'reward-cutout-status'},h('span',{class:'status-dot'}),h('span',null,'等待选择图片'));
-  const preview=h('div',{class:'reward-upload-preview'},h('div',{class:'reward-upload-empty'},icon('camera'),h('span',null,'上传图片，自动识别主体并生成白边贴纸')));
-  let photoId=null, previewUrl=null, busy=false;
+  const preview=h('div',{class:'reward-upload-preview'},h('div',{class:'reward-upload-empty'},icon('camera'),h('span',null,'上传图片，自动生成白边贴纸')));
+  let photoId=null, previewUrl=null, busy=false, sourceFile=null, currentMode='auto';
   const choose=h('button',{class:'btn btn-soft btn-sm',onclick:()=>pick()},icon('camera'),'选择图片');
+  const modeButton=h('button',{class:'btn btn-ghost btn-sm',hidden:true,onclick:async()=>{
+    if(!sourceFile||busy)return;currentMode=currentMode==='poster'?'auto':'poster';await process(sourceFile,currentMode);
+    modeButton.textContent=currentMode==='poster'?'尝试自动抠图':'保留完整图片';
+  }},'保留完整图片');
+  async function process(file,mode='auto'){
+    choose.disabled=true;modeButton.disabled=true;busy=true;status.className='reward-cutout-status working';status.lastElementChild.textContent=mode==='poster'?'正在生成完整图片贴纸…':'正在制作白边贴纸…';
+    try{
+      const {saveRewardSticker}=await import('../core/reward-art.js');const next=await saveRewardSticker(file,{mode});if(photoId)await del('photos',photoId).catch(()=>{});photoId=next;
+      const row=await get('photos',photoId);if(previewUrl)URL.revokeObjectURL(previewUrl);previewUrl=URL.createObjectURL(row.thumb||row.blob);preview.replaceChildren(h('img',{src:previewUrl,alt:'奖励周边预览'}));choose.replaceChildren(icon('camera'),'更换图片');
+      status.className='reward-cutout-status done';status.lastElementChild.textContent=mode==='poster'?'已保留完整图片并生成白边':'白边贴纸已生成';modeButton.hidden=false;
+      toast('贴纸已经做好啦',{ic:'check'});
+    }catch(error){status.className='reward-cutout-status error';status.lastElementChild.textContent='处理失败，请换一张更清晰的图片';toast(error.message||'图片处理失败',{ic:'error'});}finally{choose.disabled=false;modeButton.disabled=false;busy=false;}
+  }
   async function pick(){
     const input=h('input',{type:'file',accept:'image/*',style:'display:none'});document.body.append(input);
-    input.addEventListener('change',async()=>{const file=input.files?.[0];input.remove();if(!file)return;choose.disabled=true;busy=true;status.className='reward-cutout-status working';status.lastElementChild.textContent='正在识别主体并绘制白边…';try{
-      const {saveRewardSticker}=await import('../core/reward-art.js');const next=await saveRewardSticker(file);if(photoId)await del('photos',photoId).catch(()=>{});photoId=next;const row=await get('photos',photoId);if(previewUrl)URL.revokeObjectURL(previewUrl);previewUrl=URL.createObjectURL(row.thumb||row.blob);preview.replaceChildren(h('img',{src:previewUrl,alt:'奖励周边预览'}));choose.replaceChildren(icon('camera'),'更换图片');
-      const autoCut = ['alpha','cutout'].includes(row?.cutoutMode);status.className='reward-cutout-status '+(autoCut?'done':'soft');status.lastElementChild.textContent=autoCut?'主体已识别 · 白边贴纸已生成':'背景较复杂 · 已安全降级为白边周边卡';
-      toast(autoCut?'已自动抠出主体并生成手绘白边':'背景较复杂，已生成不伤主体的白边周边',{ic:autoCut?'check':'info'});
-    }catch(error){status.className='reward-cutout-status error';status.lastElementChild.textContent='处理失败，请换一张更清晰的图片';toast(error.message||'图片处理失败',{ic:'error'});}finally{choose.disabled=false;busy=false;}});input.click();setTimeout(()=>input.isConnected&&input.remove(),8000);
+    input.addEventListener('change',async()=>{const file=input.files?.[0];input.remove();if(!file)return;sourceFile=file;currentMode='auto';modeButton.textContent='保留完整图片';await process(file,'auto');});
+    input.click();setTimeout(()=>input.isConnected&&input.remove(),8000);
   }
   let finalized=false;
   openModal({title:'制作自定义奖励',content:h('div',{class:'form-list'},
-    h('div',{class:'form-item'},h('span',{class:'form-label'},'奖励图片'),preview,status,choose,h('span',{class:'form-hint'},'透明 PNG 直接沿主体描边；普通 JPG/HEIC 会尝试从画面边缘识别背景并自动抠出主体。复杂背景识别不可靠时会自动降级，避免把主体误删。')),
+    h('div',{class:'form-item'},h('span',{class:'form-label'},'奖励图片'),preview,status,h('div',{class:'btn-row reward-image-actions'},choose,modeButton),h('span',{class:'form-hint'},'建议选择主体清楚、背景简单的图片；如果自动贴纸不满意，可以直接保留完整图片。')),
     h('div',{class:'form-item'},h('span',{class:'form-label'},'奖励内容'),titleInp),
     h('div',{class:'form-item'},h('span',{class:'form-label'},'所需积分'),costInp)),actions:[
       {label:'取消',onClick:async close=>{if(photoId)await del('photos',photoId).catch(()=>{});if(previewUrl)URL.revokeObjectURL(previewUrl);photoId=null;previewUrl=null;finalized=true;close();}},
-      {label:'放进商城',cls:'btn-primary',onClick:async close=>{if(busy)return;const title=titleInp.value.trim();if(!title){toast('先写奖励内容',{ic:'error'});return;}await put('custom_rewards',{id:uid('cr'),title,cost:Math.max(0,Number(costInp.value)||0),photoId,redeemedAt:null,fulfilledAt:null,doneAt:null,createdAt:Date.now()});if(previewUrl)URL.revokeObjectURL(previewUrl);photoId=null;previewUrl=null;finalized=true;close();toast('已经放进你的奖励商城',{ic:'gift'});ctx.rerender('home?tab=rewards&sub=custom');}}
+      {label:'放进商城',cls:'btn-primary',onClick:async close=>{if(busy)return;const title=titleInp.value.trim();if(!title){toast('先写奖励内容',{ic:'error'});return;}await put('custom_rewards',{id:uid('cr'),title,cost:Math.max(0,Number(costInp.value)||0),photoId,redeemedAt:null,fulfilledAt:null,doneAt:null,createdAt:Date.now()});if(previewUrl)URL.revokeObjectURL(previewUrl);photoId=null;previewUrl=null;finalized=true;close();toast('已经放进你的商城',{ic:'gift'});ctx.rerender('home?tab=rewards&sub=custom');}}
     ],onClose:()=>{if(finalized)return;if(previewUrl)URL.revokeObjectURL(previewUrl);if(photoId)del('photos',photoId).catch(()=>{});}});
 }
+
 function rewardMiniArt(r){const box=h('span',{class:'reward-mini-art'});if(r.photoId){const img=h('img',{alt:'',loading:'lazy'});box.append(img);loadRewardImage(img,r.photoId);}else box.append(icon('gift'));return box;}
 async function loadRewardImage(img,photoId){const row=await get('photos',photoId).catch(()=>null);if(!row)return;const url=URL.createObjectURL(row.thumb||row.blob);img.addEventListener('load',()=>URL.revokeObjectURL(url),{once:true});img.src=url;}
 async function deleteCustomReward(r,ctx){if(!(await confirmDlg('删除这条奖励？','已扣除的积分不会自动退回。',{danger:true,okLabel:'删除'})))return;await del('custom_rewards',r.id);if(r.photoId)await del('photos',r.photoId).catch(()=>{});ctx.rerender('home?tab=rewards&sub=custom');}
@@ -154,7 +157,7 @@ function playBadgeTapFx(anchor, got, points = 10) {
 // ---- 家园 ----
 async function renderHomeTab(box, ctx) {
   const [pets, appMeta, unlocked, inventory, petLogs] = await Promise.all([all('pets'),loadKV('app_meta'),all('badges'),all('inventory'),all('petlog')]);
-  if(!pets.length){box.append(h('div',{class:'card'},h('p',{class:'paper-empty'},'当前档案还没有伙伴。请先检查备份与档案状态，不需要清空记录。')));return;}
+  if(!pets.length){box.append(h('div',{class:'card'},h('p',{class:'paper-empty'},'还没有伙伴，先完成初始伙伴选择吧。')));return;}
   const active=pets.find(p=>p.petId===appMeta.activePet)||pets[0];
   const def=PETS.find(p=>p.petId===active.petId)||PETS[0];
   const S=stats()||{}, progress=stageProgressOf(active.growth||0);
@@ -184,8 +187,7 @@ async function renderHomeTab(box, ctx) {
     h('div',{class:'ref-room-chalk'},'小日子',h('br'),'慢慢过 ♡'),
     h('div',{class:'ref-room-bed','aria-hidden':'true'},h('span',null)),
     h('div',{class:'ref-room-ball','aria-hidden':'true'}),
-    h('div',{class:'ref-room-pet'},figure),bubble,
-    h('div',{class:'ref-room-bowl','aria-hidden':'true'},'✦'));
+    h('div',{class:'ref-room-pet'},figure),bubble);
   box.append(scene);
 
   async function rename(){
@@ -241,7 +243,7 @@ async function renderHomeTab(box, ctx) {
   const badgeCard=h('section',{class:'card ref-memory-card ref-badges-card'},h('div',{class:'ref-card-head'},h('h2',null,'⭐ 纪念徽章'),h('button',{class:'more',onclick:()=>go('badges')},`已获得 ${unlocked.length}`,icon('right'))));
   const badgeGrid=h('div',{class:'ref-memory-badges'});
   for(const id of ids){const b=badgeById(id),got=gotMap.get(id);badgeGrid.append(h('button',{onclick:e=>{playBadgeTapFx(e.currentTarget,true,b.points);badgeDetail(b,got,e.currentTarget);}},h('img',{src:badgeArt(id),alt:b.name,loading:'lazy'}),h('b',null,b.name),h('small',null,got?.ts?fmtCN(new Date(got.ts).toISOString().slice(0,10)):'')));}
-  if(!ids.length)badgeGrid.append(h('p',{class:'paper-empty'},'还没有徽章。先记下一件真实的小事吧。'));
+  if(!ids.length){const {petEmptyState}=await import('../ui/empty.js');badgeGrid.append(await petEmptyState('badges',{compact:true,actionLabel:'去记录',onAction:()=>{location.hash='#/today';}}));}
   badgeCard.append(badgeGrid);
 
   const memoryCard=h('section',{class:'card ref-memory-card'},h('div',{class:'ref-card-head'},h('h2',null,'▣ 我们的回忆'),h('button',{class:'more',onclick:()=>{location.hash='#/footprint';}},icon('right'))),
@@ -252,7 +254,7 @@ async function renderHomeTab(box, ctx) {
   const propsList=h('div',{class:'ref-prop-list'});props.append(propsList);box.append(props,h('p',{class:'paper-page-note'},'几天不见也没关系，成长和收藏都还在。'));
   async function refreshProps(){
     const rows=(await all('inventory')).filter(row=>row.qty>0&&['food','toy'].includes(shopById(row.itemId)?.cat)).slice(0,3);propsList.replaceChildren();
-    if(!rows.length){propsList.append(h('p',{class:'paper-empty'},'背包还是空的，已有积分可以兑换食物和玩具。'),h('button',{class:'btn btn-soft btn-sm',onclick:()=>go('rewards','shop')},'去看看道具'));return;}
+    if(!rows.length){const {petEmptyState}=await import('../ui/empty.js');propsList.append(await petEmptyState('bag',{compact:true,actionLabel:'去商城',onAction:()=>go('rewards','shop')}));return;}
     for(const row of rows){const item=shopById(row.itemId);propsList.append(h('button',{class:'ref-prop',onclick:()=>go('rewards','owned')},h('img',{src:shopArt(item.id),alt:'',loading:'lazy'}),h('span',null,item.name),h('small',null,item.type==='consumable'?`×${row.qty}`:'永久')));}
   }
   await refreshProps();
@@ -300,7 +302,7 @@ async function renderShop(box, ctx) {
 async function renderUserRewardShop(box,ctx){
   const rows=(await all('custom_rewards')).filter(r=>!r.redeemedAt&&!r.fulfilledAt&&!r.doneAt).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   const section=h('section',{class:'card user-reward-shop'},h('div',{class:'card-title'},'我的奖励周边',h('button',{class:'more',onclick:()=>ctx.navigate('rewards','custom')},icon('plus'),'制作')));
-  if(!rows.length){section.append(h('p',{class:'paper-empty'},'还没有自定义周边。去「制作」上传一张图片吧。'));box.append(section);return;}
+  if(!rows.length){const {petEmptyState}=await import('../ui/empty.js');section.append(await petEmptyState('rewards',{compact:true,actionLabel:'制作奖励',onAction:()=>ctx.navigate('rewards','custom')}));box.append(section);return;}
   const grid=h('div',{class:'reward-custom-grid'});section.append(grid);
   rows.forEach(r=>{const art=h('div',{class:'reward-sticker-frame'});if(r.photoId){const img=h('img',{alt:r.title,loading:'lazy'});art.append(img);loadRewardImage(img,r.photoId);}else art.append(h('span',{class:'reward-sticker-fallback'},icon('gift')));
     grid.append(h('article',{class:'reward-product-card'},art,h('b',null,r.title),h('span',{class:'reward-price'},r.cost?`${r.cost} 积分`:'免费领取'),h('button',{class:'btn btn-primary btn-sm reward-exchange-btn',onclick:async e=>{const btn=e.currentTarget;if(btn.disabled)return;btn.disabled=true;try{const result=await redeemCustomReward(r.id);if(result?.err){toast(result.err,{ic:'error'});return;}toast('兑换成功，已放进待兑现',{ic:'gift'});ctx.rerender('home?tab=rewards&sub=shop');}finally{btn.disabled=false;}}},r.cost?'确认兑换':'领取')));
@@ -370,10 +372,27 @@ async function renderBag(box, ctx) {
   }
   if (!hasC) cardC.append(h('div', { class: 'empty' }, '背包里还没有消耗品'));
   if (!hasP) cardP.append(h('div', { class: 'empty' }, '兑换的永久物品会出现在这里'));
-  box.append(cardC, cardP,
+  const rewardHistory = await renderRedeemedRewards(ctx);
+  box.append(cardC, cardP, rewardHistory,
     h('div', { class: 'form-hint', style: 'text-align:center;line-height:1.8' },
       '食物和玩具可以直接使用；旧家具与穿戴只保留历史收藏，不再提供新的操作入口。'));
 }
+async function renderRedeemedRewards(ctx){
+  const rows=(await all('custom_rewards')).filter(r=>r.redeemedAt||r.fulfilledAt||r.doneAt).sort((a,b)=>(b.redeemedAt||b.doneAt||0)-(a.redeemedAt||a.doneAt||0));
+  const section=h('section',{class:'card reward-history-card'},h('div',{class:'card-title'},icon('gift'),'我的奖励'));
+  if(!rows.length){section.append(h('div',{class:'row-sub'},'兑换后的自定义奖励会出现在这里。'));return section;}
+  const pending=rows.filter(r=>!(r.fulfilledAt||r.doneAt));
+  const done=rows.filter(r=>r.fulfilledAt||r.doneAt);
+  const appendRow=(r,fulfilled)=>section.append(h('div',{class:'reward-custom-row reward-history-row'},rewardMiniArt(r),
+    h('div',{class:'row-main'},h('b',{class:'row-title'+(fulfilled?' done':'')},r.title),h('div',{class:'row-sub'},r.cost?`${r.cost} 积分`:'无需积分',fulfilled?' · 已完成':' · 待兑现')),
+    fulfilled?null:h('button',{class:'btn btn-soft btn-sm',onclick:async()=>{r.fulfilledAt=Date.now();r.doneAt=r.fulfilledAt;await put('custom_rewards',r);toast('已记下这份奖励',{ic:'check'});ctx.rerender('home?tab=rewards&sub=owned');}},'已经享受')));
+  if(pending.length)section.append(h('div',{class:'reward-history-title'},'待兑现'));
+  pending.forEach(r=>appendRow(r,false));
+  if(done.length)section.append(h('div',{class:'reward-history-title'},'已完成'));
+  done.forEach(r=>appendRow(r,true));
+  return section;
+}
+
 function catLabel(cat) { return { food: '食物', toy: '玩具', outfit: '装扮', furniture: '家具', bg: '背景', display: '展示' }[cat] || cat; }
 function catLabelUse(cat) { return cat === 'toy' ? '玩耍' : '历史收藏'; }
 async function usePerm(item, ctx) {
@@ -385,7 +404,7 @@ async function usePerm(item, ctx) {
     ctx.rerender();
     return;
   }
-  toast('这件旧物已作为历史收藏保留，当前版本暂不开放使用。', { ic: 'bag', ms: 3200 });
+  toast('这件收藏现在可以查看，暂时不能使用。', { ic: 'bag', ms: 3200 });
 }
 
 // ---- 徽章收藏册 ----

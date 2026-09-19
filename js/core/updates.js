@@ -56,7 +56,7 @@ export async function checkUpdates(){
   const fill=h('i',{class:'update-progress-fill',style:'width:0%'});
   const bar=h('div',{class:'update-progress-track',role:'progressbar','aria-valuemin':'0','aria-valuemax':'100','aria-valuenow':'0'},fill);
   const setProgress=(n,text)=>{const v=Math.max(0,Math.min(100,Math.round(n)));fill.style.width=v+'%';value.textContent=v+'%';bar.setAttribute('aria-valuenow',String(v));if(text)label.textContent=text;};
-  const modal=openModal({title:'检查更新',content:h('div',{class:'update-progress-card'},h('div',{class:'update-progress-head'},label,value),bar,h('p',{class:'form-hint'},'进度对应真实检查阶段，不会用随机数字模拟下载。')),actions:[]});
+  const modal=openModal({title:'检查更新',content:h('div',{class:'update-progress-card'},h('div',{class:'update-progress-head'},label,value),bar,h('p',{class:'form-hint'},'会依次检查版本、准备资源并确认更新状态。')),actions:[]});
   try{
     setProgress(12,'正在定位本应用的更新服务…');
     const reg=registration || await navigator.serviceWorker.getRegistration(new URL('../../',import.meta.url).href) || await registerUpdates();

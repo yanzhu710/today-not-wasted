@@ -24,6 +24,7 @@ export async function renderFootprint(view, ctx) {
   if (raw === 'journal') filter = 'journal';
   if (raw === 'ledger') filter = 'ledger';
   if (!['all','quick','focus','journal','ledger'].includes(filter)) filter = 'all';
+  if (legacy[raw]) history.replaceState(null,'','#/footprint?tab='+tab+(filter!=='all'?'&filter='+filter:''));
   view.replaceChildren();
   view.dataset.recordTab = tab;
   view.append(routeTabs({
@@ -49,7 +50,7 @@ export async function renderFootprint(view, ctx) {
     else {
       box.append(h('section',{class:'card record-data-intro'},
         h('div',{class:'card-title'},icon('stats'),'数据与回顾',h('button',{class:'more',onclick:()=>openSharePanel()},icon('share'),'分享')),
-        h('p',{class:'row-sub'},'统计、趋势和回顾统一读取已经保存的真实记录。')));
+        h('p',{class:'row-sub'},'看看这段时间留下了什么，也可以生成一张回顾分享。')));
       await renderStats(box);
       await renderReview(box, ctx);
     }
@@ -109,7 +110,8 @@ async function renderRecordFeed(box, ctx, filter = 'all') {
     .sort((a,b) => (b.dateKey || '').localeCompare(a.dateKey || '') || actualTs(b)-actualTs(a))
     .slice(0,260);
   if (!visible.length) {
-    box.append(h('section',{class:'card'},h('div',{class:'empty'},filter==='all'?'还没有记录。先从「今天」记下一件真实的小事吧。':'这一类还没有记录。')));
+    const {petEmptyState}=await import('../ui/empty.js');
+    box.append(await petEmptyState('records',{actionLabel:filter==='all'?'去今天记录':'查看全部记录',onAction:()=>{location.hash=filter==='all'?'#/today':'#/footprint?tab=timeline&filter=all';}}));
     return;
   }
 
@@ -484,7 +486,7 @@ async function renderLedger(box, ctx) {
     biggest?h('p',{class:'ledger-insight'},`本月支出最多的是「${biggest[0]}」，占 ${Math.round(biggest[1]/out*100)}%。`):h('p',{class:'ledger-insight'},'开始记账后，这里会自动生成真实的分类和趋势分析。'),
     h('button',{class:'btn btn-primary btn-block',onclick:()=>quickLedgerDialog()},icon('plus'),'记一笔'));
   const listCard=h('section',{class:'card ledger-list-card'},h('div',{class:'card-title'},'账目明细',h('span',{class:'tag'},`${rows.length} 笔`)));
-  if(!rows.length)listCard.append(h('div',{class:'empty'},'本月还没有账目'));
+  if(!rows.length){const {petEmptyState}=await import('../ui/empty.js');listCard.append(await petEmptyState('records',{compact:true,actionLabel:'记一笔',onAction:()=>quickLedgerDialog()}));}
   rows.forEach(r=>listCard.append(h('div',{class:'row-item'},h('div',{class:'row-main'},h('div',{class:'row-title'},r.category),h('div',{class:'row-sub'},h('span',null,fmtCN(r.dateKey)),r.note?h('span',null,r.note):null)),h('span',{class:'row-pts'+(r.type==='out'?' neg':'')},(r.type==='in'?'+':'-')+fmtMoney(r.amount,cur).replace(cur,'')),h('button',{class:'iconbtn','aria-label':'账目操作',onclick:async()=>{await actionSheet(`${r.category} ${fmtMoney(r.amount,cur)}`,[{ic:'trash',label:'删除这笔账',danger:true,onClick:async()=>{await deleteLedgerEntry(r);toast('已删除，统计与奖励同步修正');ctx.rerender('footprint?tab=data&view=ledger');}}]);}},icon('settings')))));
   box.append(analysis,listCard);
   function ledgerMetric(label,value,tone){return h('div',{class:'ledger-metric '+tone},h('span',null,label),h('b',{class:'num'},value));}
@@ -496,151 +498,41 @@ function statCell(v, k) { return h('div', { class: 'stat-cell', style: 'min-widt
 
 // ================= 周月回顾 =================
 async function renderReview(box, ctx) {
-  const dk = todayKey();
-  const wk = weekKeyOf(dk);
-  const mk = monthKeyOf(dk);
-  const [events, tasks, ledgerRows, reviews, badges, focusRows] = await Promise.all([
-    all('events'), all('tasks'), all('ledger'), all('reviews'), all('badges'), all('focus_sessions'),
+  const dk=todayKey(), wk=weekKeyOf(dk), mk=monthKeyOf(dk);
+  const [events,tasks,reviews,badges,focusRows,pets,meta]=await Promise.all([
+    all('events'),all('tasks'),all('reviews'),all('badges'),all('focus_sessions'),all('pets'),loadKV('app_meta')
   ]);
-  const weekEvents = events.filter((e) => weekKeyOf(e.dateKey) === wk);
-  const weekDays = new Set(weekEvents.map((e) => e.dateKey)).size;
-  const weekFocus = focusRows.filter((f) => weekKeyOf(f.dateKey) === wk).reduce((a, f) => a + f.minutes, 0);
-  const weekTasks = tasks.filter((t) => t.done && weekKeyOf(t.dateKey) === wk).length;
-  const weekBadges = badges.filter((b) => weekKeyOf(new Date(b.ts).toISOString().slice(0, 10)) === wk).length;
-  const wkDone = reviews.some((r) => r.id === `week:${wk}`);
-  const monthEvents = events.filter((e) => monthKeyOf(e.dateKey) === mk);
-  const monthDays = new Set(monthEvents.map((e) => e.dateKey)).size;
-  const monthLedger = ledgerRows.filter((l) => monthKeyOf(l.dateKey) === mk);
-  const mOut = monthLedger.filter((l) => l.type === 'out').reduce((a, l) => a + l.amount, 0);
-  const mIn = monthLedger.filter((l) => l.type === 'in').reduce((a, l) => a + l.amount, 0);
-  const mkDone = reviews.some((r) => r.id === `month:${mk}`);
-  const settings = await loadKV('settings');
+  const weekEvents=events.filter(e=>weekKeyOf(e.dateKey)===wk), monthEvents=events.filter(e=>monthKeyOf(e.dateKey)===mk);
+  const weekDays=new Set(weekEvents.map(e=>e.dateKey)).size, monthDays=new Set(monthEvents.map(e=>e.dateKey)).size;
+  const weekFocus=focusRows.filter(f=>weekKeyOf(f.dateKey)===wk).reduce((a,f)=>a+(f.minutes||0),0);
+  const weekTasks=tasks.filter(t=>t.done&&weekKeyOf(t.dateKey)===wk).length;
+  const weekBadges=badges.filter(b=>weekKeyOf(new Date(b.ts).toISOString().slice(0,10))===wk).length;
+  const monthFocus=focusRows.filter(f=>monthKeyOf(f.dateKey)===mk).reduce((a,f)=>a+(f.minutes||0),0);
+  const monthTasks=tasks.filter(t=>t.done&&monthKeyOf(t.dateKey)===mk).length;
+  const monthBadges=badges.filter(b=>monthKeyOf(new Date(b.ts).toISOString().slice(0,10))===mk).length;
+  const wkDone=reviews.some(r=>r.id===`week:${wk}`), mkDone=reviews.some(r=>r.id===`month:${mk}`);
+  let pet=null;try{const active=pets.find(p=>p.petId===meta.activePet)||pets[0];if(active){const {petFigure}=await import('../ui/paper.js');pet=petFigure(active);}}catch{}
+  const hub=h('section',{class:'review-hub'},
+    h('div',{class:'review-hub-copy'},h('span',null,'回顾'),h('h2',null,'把这一段生活收好'),h('p',null,'周回顾和月回顾都在这里，分享也使用同一套新版模板。')),
+    pet?h('div',{class:'review-hub-pet'},pet):null,
+    h('div',{class:'review-period-grid'},
+      reviewPeriod('week','本周',weekLabel(wk),weekDays,weekTasks,weekFocus,weekBadges,wkDone),
+      reviewPeriod('month','本月',monthLabel(mk),monthDays,monthTasks,monthFocus,monthBadges,mkDone)),
+    h('button',{class:'btn btn-primary review-share-main',onclick:()=>openSharePanel({type:'week',dateKey:dk})},icon('share'),'生成回顾分享'));
+  box.append(hub);
 
-  const weekCard = h('div', { class: 'card' },
-    h('div', { class: 'card-title' }, icon('calendar'), '周回顾 · ' + weekLabel(wk),
-      wkDone ? h('span', { class: 'tag tag-pri' }, '已确认') : null),
-    h('ul', { style: 'margin:0;padding-left:18px;font-size:13.5px;color:var(--muted);line-height:2' },
-      h('li', null, `有效记录 ${weekDays} 天，完成任务 ${weekTasks} 件`),
-      h('li', null, `专注 ${fmtMin(weekFocus)}`),
-      h('li', null, `解锁徽章 ${weekBadges} 枚`),
-      h('li', null, `宠物和家园在等你继续`)),
-    h('div', { class: 'btn-row', style: 'margin-top:10px' },
-      wkDone ? h('span', { class: 'row-sub' }, '本周回顾已确认，下周继续') :
-        h('button', { class: 'btn btn-primary btn-sm', style: 'flex:1', onclick: async () => {
-          const res = await confirmReview('week', wk);
-          if (res && res.points) { queueSettle([{ ic: 'calendar', label: '确认周回顾', points: res.points }]); }
-          toast(res ? '已确认' : '本周已确认过');
-          ctx.rerender();
-        } }, `确认本周回顾（+${POINTS.weekReview.delta}积分）`)));
-  const monthCard = h('div', { class: 'card' },
-    h('div', { class: 'card-title' }, icon('calendar'), '月回顾 · ' + monthLabel(mk),
-      mkDone ? h('span', { class: 'tag tag-pri' }, '已确认') : null),
-    h('ul', { style: 'margin:0;padding-left:18px;font-size:13.5px;color:var(--muted);line-height:2' },
-      h('li', null, `有效记录 ${monthDays} 天`),
-      h('li', null, `收入 ${fmtMoney(mIn, settings.currency)} · 支出 ${fmtMoney(mOut, settings.currency)}（默认不进入分享卡）`),
-      h('li', null, `本月徽章 ${badges.filter((b) => monthKeyOf(new Date(b.ts).toISOString().slice(0, 10)) === mk).length} 枚`)),
-    h('div', { class: 'btn-row', style: 'margin-top:10px' },
-      mkDone ? h('span', { class: 'row-sub' }, '本月回顾已确认') :
-        h('button', { class: 'btn btn-soft btn-sm', style: 'flex:1', onclick: async () => { await confirmReview('month', mk); toast('已确认月度回顾'); ctx.rerender(); } }, '确认月度回顾'),
-      h('button', { class: 'btn btn-warn btn-sm', style: 'flex:1', onclick: () => shareCard(mk) }, '生成月度分享卡')));
-  const reviewGroup=h('section',{class:'data-review-group'},h('div',{class:'data-section-title'},h('b',null,'回顾'),h('span',null,'把周与月放在同一组，不再分散成多个功能区块')),weekCard,monthCard,h('div',{class:'form-hint'},'分享卡默认不包含账目金额与手账正文。'));box.append(reviewGroup);
-}
-
-// 月度分享卡：canvas 绘制 → 下载 PNG
-async function shareCard(mk) {
-  const S = stats() || {};
-  const [events, badges] = await Promise.all([all('events'), all('badges')]);
-  const monthEvents = events.filter((e) => monthKeyOf(e.dateKey) === mk);
-  const days = new Set(monthEvents.map((e) => e.dateKey)).size;
-  const focusMin = monthEvents.filter((e) => e.kind === 'focus').reduce((a, e) => a + (e.minutes || 0), 0);
-  const bCount = badges.filter((b) => monthKeyOf(new Date(b.ts).toISOString().slice(0, 10)) === mk).length;
-  const catCount = S.cats ? S.cats.size : 0;
-  const cv = h('canvas', { width: 750, height: 1200 });
-  const c = cv.getContext('2d');
-  const rr = (x, y2, w, hh, r, fill) => {
-    c.fillStyle = fill;
-    c.beginPath();
-    if (c.roundRect) c.roundRect(x, y2, w, hh, r);
-    else c.rect(x, y2, w, hh);
-    c.fill();
-  };
-  // 渐变背景
-  const grad = c.createLinearGradient(0, 0, 0, 1200);
-  grad.addColorStop(0, '#F0E8D5');
-  grad.addColorStop(0.5, '#E8E0CC');
-  grad.addColorStop(1, '#D8CCB0');
-  c.fillStyle = grad;
-  c.fillRect(0, 0, 750, 1200);
-  // 装饰圆
-  c.fillStyle = 'rgba(116,143,114,0.08)';
-  c.beginPath(); c.arc(650, 120, 100, 0, Math.PI * 2); c.fill();
-  c.beginPath(); c.arc(80, 1100, 130, 0, Math.PI * 2); c.fill();
-  c.fillStyle = 'rgba(216,169,77,0.1)';
-  c.beginPath(); c.arc(100, 150, 60, 0, Math.PI * 2); c.fill();
-  // 主卡片
-  rr(50, 50, 650, 1100, 40, '#FFFDF8');
-  // 顶部装饰条
-  rr(50, 50, 650, 8, 4, '#748F72');
-  // 标题区域
-  c.fillStyle = '#748F72';
-  c.beginPath(); c.arc(375, 180, 48, 0, Math.PI * 2); c.fill();
-  c.fillStyle = '#FFFDF8';
-  c.font = 'bold 36px sans-serif';
-  c.textAlign = 'center';
-  c.fillText('☀', 375, 195);
-  c.textAlign = 'left';
-  c.fillStyle = '#2F3430';
-  c.font = 'bold 42px sans-serif';
-  c.fillText('今天没白过', 200, 290);
-  c.font = '24px sans-serif';
-  c.fillStyle = '#747A73';
-  c.fillText(monthLabel(mk) + ' · 月度生活足迹', 200, 328);
-  // 分隔线
-  c.strokeStyle = '#E7E0D2';
-  c.lineWidth = 2;
-  c.beginPath(); c.moveTo(100, 370); c.lineTo(650, 370); c.stroke();
-  // 数据卡片 - 2x2 网格
-  const items = [
-    ['🌿', '有效记录', days + ' 天', '#748F72'],
-    ['⏱', '累计专注', fmtMin(focusMin), '#5B8DB8'],
-    ['🏅', '解锁徽章', bCount + ' 枚', '#D8A94D'],
-    ['📊', '生活分类', catCount + ' 类', '#D78367'],
-  ];
-  const cardW = 260, cardH = 180, gap = 20;
-  const startX = 100, startY = 410;
-  items.forEach(([icon, label, value, color], i) => {
-    const col = i % 2, row = Math.floor(i / 2);
-    const x = startX + col * (cardW + gap);
-    const y = startY + row * (cardH + gap);
-    rr(x, y, cardW, cardH, 24, '#F7F3EA');
-    c.fillStyle = color;
-    c.font = '32px sans-serif';
-    c.fillText(icon, x + 24, y + 52);
-    c.fillStyle = '#747A73';
-    c.font = '20px sans-serif';
-    c.fillText(label, x + 24, y + 90);
-    c.fillStyle = '#2F3430';
-    c.font = 'bold 40px sans-serif';
-    c.fillText(value, x + 24, y + 145);
-  });
-  // 底部标语
-  c.fillStyle = '#D78367';
-  c.font = 'bold 26px sans-serif';
-  c.textAlign = 'center';
-  c.fillText('把普通日子变成看得见的成就', 375, 920);
-  c.fillStyle = '#9BA39B';
-  c.font = '20px sans-serif';
-  c.fillText('— 今天没白过 · 生活记录 —', 375, 960);
-  // 底部装饰
-  c.fillStyle = 'rgba(116,143,114,0.15)';
-  for (let i = 0; i < 5; i++) {
-    c.beginPath();
-    c.arc(200 + i * 80, 1020, 4, 0, Math.PI * 2);
-    c.fill();
+  function reviewPeriod(type,title,label,days,taskN,focusMin,badgeN,done){
+    return h('article',{class:'review-period'},
+      h('div',{class:'review-period-head'},h('b',null,title),h('small',null,label),done?h('span',{class:'tag tag-pri'},'已确认'):null),
+      h('div',{class:'review-metrics'},
+        h('span',null,h('b',{class:'num'},days),h('small',null,'记录日')),
+        h('span',null,h('b',{class:'num'},taskN),h('small',null,'完成事项')),
+        h('span',null,h('b',{class:'num'},fmtMin(focusMin)),h('small',null,'专注')),
+        h('span',null,h('b',{class:'num'},badgeN),h('small',null,'新徽章'))),
+      h('div',{class:'review-period-actions'},
+        done?h('span',{class:'review-confirmed'},'这段回顾已经收好'):
+          h('button',{class:'btn btn-soft btn-sm',onclick:async()=>{const result=await confirmReview(type,type==='week'?wk:mk);if(result?.points)queueSettle([{ic:'calendar',label:`确认${title}回顾`,points:result.points}]);toast('已确认回顾',{ic:'check'});ctx.rerender();}},'确认回顾'),
+        h('button',{class:'btn btn-ghost btn-sm',onclick:()=>openSharePanel({type,dateKey:dk})},'分享')));
   }
-  const blob = await new Promise((r) => cv.toBlob((b) => r(b), 'image/png'));
-  const url = URL.createObjectURL(blob);
-  const a = h('a', { href: url, download: `今天没白过_月度回顾_${mk}.png` });
-  document.body.append(a); a.click(); a.remove();
-  toast('分享卡已生成并下载', { ic: 'download' });
 }
+

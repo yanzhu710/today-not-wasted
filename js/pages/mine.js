@@ -1,11 +1,10 @@
-// 今天没白过 · 「我的」页：个人资料 / 积分明细 / 自定义奖励 / 设置 / 备份与数据管理 / 关于
+// 今天没白过 · 「我的」页：个人资料 / 积分 / 显示与声音 / 备份 / 应用 / 关于
 import { all, get, put, del, count, loadKV, saveKV, patchKV, snapshotData, restoreData, mediaIds, clearEverything, SCHEMA_VERSION, DB_NAME } from '../core/db.js';
 import { POINTS, GROWTH, BADGES } from '../core/catalog.js';
 import { balance, stats, clearAllForReset, recomputeStats, confirmReview } from '../core/engine.js';
 import { h, icon, todayKey, fmtCN, fmtMoney } from '../core/util.js';
 import { openModal, formDlg, actionSheet, confirmDlg, toast, configure } from '../core/fx.js';
 import { makeZip, readZip } from '../core/zip.js';
-// 动态导入main.js的函数，避免循环导入
 import { fillAvatar, clearAvatarCache } from '../core/avatar.js';
 import { APP_NAME, APP_VERSION, APP_AUTHOR, RELEASE_HIGHLIGHTS } from '../core/appmeta.js';
 import * as sound from '../core/sound.js';
@@ -46,109 +45,72 @@ export async function renderMine(view, ctx) {
       h('div', { class: 'stat-cell' }, h('div', { class: 'v num' }, `${S.badgeCount || 0}/120`), h('div', { class: 'k' }, '徽章')),
       h('div', { class: 'stat-cell' }, h('div', { class: 'v num' }, String(S.focusMin || 0)), h('div', { class: 'k' }, '专注分钟'))),
     bal < 0 ? h('div', { class: 'form-hint', style: 'margin-top:8px;color:var(--accent)' }, `有 ${-bal} 待抵扣积分：撤销产生的差额将由之后的积分自动抵扣，已兑换的物品不受影响。`) : null,
-    h('button',{class:'btn btn-soft btn-sm mine-reward-link',onclick:()=>{location.hash='#/home?tab=rewards&sub=custom';}},icon('gift'),'去奖励中心'));
+    h('button',{class:'btn btn-soft btn-sm mine-reward-link',onclick:()=>{location.hash='#/home?tab=rewards&sub=shop';}},icon('gift'),'去商城'));
 
-  // 自定义奖励已并入「伙伴 → 奖励」，这里保持个人与设置页的职责单一。
-
-  // 设置
-  const setCard = h('div', { class: 'card mine-settings-card' },
-    h('div', { class: 'card-title' }, icon('settings'), '外观与体验'),
-    setRow('主题', h('div', { class: 'seg', style: 'width:190px' },
-      h('button', { class: settings.theme !== 'dark' ? 'on' : '', onclick: async (e) => { e.currentTarget.parentElement.querySelectorAll('button').forEach((b, i) => b.classList.toggle('on', i === 0)); await patchKV('settings', { theme: 'warm' }); await refreshSettings(); } }, '温暖手账'),
-      h('button', { class: settings.theme === 'dark' ? 'on' : '', onclick: async (e) => { e.currentTarget.parentElement.querySelectorAll('button').forEach((b, i) => b.classList.toggle('on', i === 1)); await patchKV('settings', { theme: 'dark' }); await refreshSettings(); } }, icon('moon'), '夜读'))),
-    setRow('动效', h('div', { class: 'seg', style: 'width:230px' },
-      ['rich', 'light', 'off'].map((m, i) => h('button', { class: settings.motion === m ? 'on' : '', onclick: async (e) => { e.currentTarget.parentElement.querySelectorAll('button').forEach((b, j) => b.classList.toggle('on', j === i)); await patchKV('settings', { motion: m }); await refreshSettings(); } }, ['丰富', '轻', '关'][i])))),
-    setRow('声音', h('div', { style: 'display:flex;align-items:center;gap:10px;flex:1;justify-content:flex-end' },
-      h('button', { class: 'iconbtn', style: 'width:38px;height:38px', onclick: async () => { const { toggleMute } = await import('../main.js'); toggleMute(); setTimeout(() => ctx.rerender(), 100); } }, icon(settings.muted ? 'muted' : 'volume')),
-      h('input', { class: 'input range', type: 'range', min: '0', max: '100', value: settings.volume, style: 'width:130px', oninput: async (e) => { await patchKV('settings', { volume: Number(e.target.value) }); const { setVolume } = await import('../core/sound.js'); setVolume(Number(e.target.value)); } }),
-      h('button', { class: 'btn btn-ghost btn-sm', onclick: async () => { const s = await import('../core/sound.js'); s.unlockAudio(); s.play('complete'); } }, '试听'))),
-    h('div', { class: 'form-hint', style: 'margin-top:4px' }, '系统开启「减少动态效果」时会自动进入轻动效；静音开关随时可以在顶部使用'));
+    // 显示与声音
+  const themeSelect = h('select',{class:'input setting-select','aria-label':'显示模式'},
+    h('option',{value:'warm',selected:settings.theme!=='dark'},'浅色手账'),
+    h('option',{value:'dark',selected:settings.theme==='dark'},'夜读模式'));
+  themeSelect.addEventListener('change',async()=>{await patchKV('settings',{theme:themeSelect.value});await refreshSettings();});
+  const motionSelect = h('select',{class:'input setting-select','aria-label':'动画效果'},
+    [['rich','完整动画'],['light','轻量动画'],['off','关闭动画']].map(([value,label])=>h('option',{value,selected:settings.motion===value},label)));
+  motionSelect.addEventListener('change',async()=>{await patchKV('settings',{motion:motionSelect.value});await refreshSettings();});
+  const soundSelect = h('select',{class:'input setting-select','aria-label':'声音效果'},
+    h('option',{value:'on',selected:!settings.muted},'开启'),h('option',{value:'off',selected:!!settings.muted},'关闭'));
+  soundSelect.addEventListener('change',async()=>{
+    const muted=soundSelect.value==='off';await patchKV('settings',{muted});const s=await import('../core/sound.js');s.setMuted(muted);if(!muted){await s.unlockAudio();s.play('tap');}
+    await refreshSettings();
+  });
+  const volume=h('input',{class:'input range mine-volume',type:'range',min:'0',max:'100',value:settings.volume,'aria-label':'声效音量',oninput:async e=>{await patchKV('settings',{volume:Number(e.target.value)});const s=await import('../core/sound.js');s.setVolume(Number(e.target.value));}});
+  const setCard = h('section',{class:'card mine-settings-card'},
+    h('div',{class:'card-title'},icon('settings'),'显示与声音'),
+    settingRow('显示模式',themeSelect),
+    settingRow('动画效果',motionSelect),
+    settingRow('声音效果',soundSelect),
+    settingRow('声效音量',h('div',{class:'setting-volume'},volume,h('button',{class:'btn btn-ghost btn-sm',onclick:async()=>{const s=await import('../core/sound.js');await s.unlockAudio();s.play('complete');}},'试听'))));
 
   // 数据与备份
-  const dataCard = h('div', { class: 'card' },
-    h('div', { class: 'card-title' }, icon('download'), '备份与数据'),
-    h('div', { class: 'form-hint', style: 'margin-bottom:8px' },
-      appMeta.lastBackupAt ? `上次备份：${fmtCN(new Date(appMeta.lastBackupAt).toISOString().slice(0, 10))} ${new Date(appMeta.lastBackupAt).toTimeString().slice(0, 5)}` : '还没有备份过。数据只存在这台设备上，建议定期导出'),
-    h('div', { class: 'btn-row' },
-      h('button', { class: 'btn btn-primary btn-sm', style: 'flex:1', onclick: exportBackup }, icon('download'), '导出备份'),
-      h('button', { class: 'btn btn-ghost btn-sm', style: 'flex:1', onclick: () => importBackup(ctx) }, icon('upload'), '导入恢复')),
-    h('div', { class: 'btn-row', style: 'margin-top:8px' },
-      h('button', { class: 'btn btn-ghost btn-sm', style: 'flex:1', onclick: storageInfo }, icon('settings'), '存储占用'),
-      h('button', { class: 'btn btn-danger btn-sm', style: 'flex:1', onclick: dangerZone }, icon('trash'), '清空全部数据')));
+  const dataCard = h('section',{class:'card'},
+    h('div',{class:'card-title'},icon('download'),'数据与备份'),
+    h('div',{class:'mine-menu-list'},
+      mineMenu('导出备份',appMeta.lastBackupAt?`上次备份 ${fmtCN(new Date(appMeta.lastBackupAt).toISOString().slice(0,10))}`:'建议定期保存一份完整备份','download',exportBackup),
+      mineMenu('导入恢复','从之前导出的备份恢复本机数据','upload',()=>importBackup(ctx)),
+      mineMenu('存储空间','查看照片、记录等本机占用','settings',storageInfo),
+      mineMenu('清空全部数据','此操作不可撤销','trash',dangerZone,'danger')));
 
-  // 系统状态
-  const statusCard = h('div', { class: 'card' },
-    h('div', { class: 'card-title' }, icon('search'), '设备与状态'),
-    h('div', { class: 'stat-row' },
-      h('div', { class: 'stat-cell' }, h('div', { class: 'v' }, standalone ? '已安装' : '网页'), h('div', { class: 'k' }, '运行形态')),
-      h('div', { class: 'stat-cell' }, h('div', { class: 'v' }, canInstallApp() ? '可安装' : '已处理'), h('div', { class: 'k' }, '安装状态')),
-      h('div', { class: 'stat-cell' }, h('div', { class: 'v' }, hasSW ? 'PWA' : 'Web'), h('div', { class: 'k' }, '离线能力'))),
-    h('div', { class: 'row-sub', style: 'margin-top:10px;gap:6px' },
-      h('span', { class: 'tag tag-pri' }, `任务 ${taskN}`),
-      h('span', { class: 'tag' }, `心情 ${journalN}`),
-      h('span', { class: 'tag' }, `照片 ${photoN}`),
-      h('span', { class: 'tag tag-acc' }, `Schema v${SCHEMA_VERSION}`)),
-    h('div', { class: 'form-hint', style: 'margin-top:8px;line-height:1.8' },
-      appMeta.lastBackupAt ? `最近一次备份：${fmtCN(new Date(appMeta.lastBackupAt).toISOString().slice(0, 10))} ${new Date(appMeta.lastBackupAt).toTimeString().slice(0, 5)}。` : '还没有导出备份，正式长期使用前建议先做一次完整备份。',
-      ' 当前为纯本地模式，不依赖服务器。'));
-
-  // 安装与发布
-  const installCard = h('div', { class: 'card' },
-    h('div', { class: 'card-title' }, icon('download'), '安装与发布'),
-    h('div', { class: 'row-sub', style: 'margin-bottom:10px' }, '建议添加到主屏幕使用，也更有利于长期保留本地数据。'),
-    h('div', { class: 'btn-row' },
-      h('button', { class: 'btn ' + (canInstallApp() ? 'btn-primary' : 'btn-ghost') + ' btn-sm', style: 'flex:1', onclick: async () => {
-        if (canInstallApp()) {
-          const ok = await promptInstallApp();
-          toast(ok ? '安装提示已弹出' : '本次未安装', { ic: ok ? 'check' : 'info' });
-          ctx.rerender();
-        } else installGuide();
-      } }, icon('download'), canInstallApp() ? '添加到主屏幕' : '查看安装方式'),
-      h('button', { class: 'btn btn-ghost btn-sm', style: 'flex:1', onclick: releaseNotes }, icon('edit'), '版本说明')));
-
-  const preflightItems = [
-    { ok: !!appMeta.lastBackupAt, label: '已做一次本机备份', sub: appMeta.lastBackupAt ? `最近备份 ${fmtCN(new Date(appMeta.lastBackupAt).toISOString().slice(0, 10))}` : '正式上线或迁移设备前建议先导出一次' },
-    { ok: window.location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname), label: '运行环境支持 PWA', sub: window.location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname) ? '当前环境可注册 Service Worker' : 'GitHub Pages 发布后会自动变为 HTTPS' },
-    { ok: standalone || canInstallApp(), label: '支持安装到主屏幕', sub: standalone ? '当前已是独立应用形态' : canInstallApp() ? '当前浏览器已给出安装提示能力' : '部分浏览器需要手动从菜单里安装' },
-    { ok: !!profile.nickname || !!profile.account, label: '资料与本机档案已建立', sub: profile.nickname || profile.account ? `当前档案：${profile.nickname || profile.account}` : '建议先完成资料确认' },
-    { ok: taskN + journalN + photoN > 0, label: '已有真实数据样例', sub: `任务 ${taskN} · 手账 ${journalN} · 照片 ${photoN}` },
-  ];
-  const passN = preflightItems.filter((x) => x.ok).length;
-  const preflightCard = h('div', { class: 'card' },
-    h('div', { class: 'card-title' }, icon('check'), '上线前检查', h('span', { class: 'tag ' + (passN === preflightItems.length ? 'tag-pri' : '') }, `${passN}/${preflightItems.length}`)),
-    ...preflightItems.map((it, i) => h('div', { class: 'row-item', style: i === preflightItems.length - 1 ? 'border-bottom:0' : '' },
-      h('span', { class: 'tag ' + (it.ok ? 'tag-pri' : 'tag-acc'), style: 'min-width:42px;text-align:center;justify-content:center' }, it.ok ? '通过' : '待补'),
-      h('div', { class: 'row-main' },
-        h('div', { class: 'row-title', style: 'font-size:13.5px;white-space:normal' }, it.label),
-        h('div', { class: 'row-sub' }, it.sub)))),
-    h('div', { class: 'btn-row', style: 'margin-top:10px' },
-      h('button', { class: 'btn btn-ghost btn-sm', style: 'flex:1', onclick: preflightCheck }, icon('search'), '查看详情'),
-      h('button', { class: 'btn btn-soft btn-sm', style: 'flex:1', onclick: exportDiagnostics }, icon('download'), '导出诊断')));
+  // 应用
+  const appCard = h('section',{class:'card'},
+    h('div',{class:'card-title'},icon('home'),'应用'),
+    h('div',{class:'mine-menu-list'},
+      mineMenu(canInstallApp()?'添加到主屏幕':'安装方式',standalone?'当前已作为独立应用运行':'添加到主屏幕后使用更方便','download',async()=>{
+        if(canInstallApp()){const ok=await promptInstallApp();toast(ok?'安装提示已打开':'本次未安装',{ic:ok?'check':'info'});ctx.rerender();}else installGuide();
+      }),
+      mineMenu('检查更新',`当前版本 v${APP_VERSION}`,'refresh',async()=>{const m=await import('../main.js');m.checkForUpdate();}),
+      mineMenu('版本说明','查看这次更新了什么','edit',releaseNotes)));
 
   // 关于
-  const aboutCard = h('div', { class: 'card' },
-    h('div', { class: 'card-title' }, icon('heart'), '关于'),
-    h('div', { style: 'text-align:center;padding:6px 0' },
-      h('div', { style: 'font-size:18px;font-weight:800' }, APP_NAME),
-      h('div', { class: 'row-sub', style: 'justify-content:center;margin-top:2px' }, '把普通日子变成看得见的成就'),
-      h('div', { class: 'row-sub', style: 'justify-content:center;margin-top:10px' }, `版本 v${APP_VERSION} · 本机档案 · 全部免费`),
-      h('button', { class: 'btn btn-ghost btn-sm', style: 'margin-top:12px', onclick: async () => { const m = await import('../main.js'); m.checkForUpdate(); } }, icon('refresh'), '检查更新'),
-      h('div', { style: 'margin-top:12px;font-weight:700;color:var(--primary-deep)' }, `制作人：${APP_AUTHOR}`),
-      h('div', { class: 'form-hint', style: 'margin-top:8px;line-height:1.9' },
-        '数据仅保存在本机浏览器（IndexedDB），不上传任何服务器；不包含云端账户、支付与广告。节假日与调休数据来自国务院办公厅通知。')));
+  const aboutCard = h('section',{class:'mine-about-inline'},
+    h('b',null,APP_NAME),
+    h('span',null,'把普通日子变成看得见的成就'),
+    h('small',null,`v${APP_VERSION} · 制作人 ${APP_AUTHOR} · 数据仅保存在本机`));
 
   let encourageCard = null;
   const activePet = pets.find(p => p.petId === appMeta.activePet) || pets[0];
   if (activePet) {
     const { petFigure } = await import('../ui/paper.js');
-    encourageCard = h('section',{class:'card mine-encourage-card'},
+    encourageCard = h('section',{class:'mine-encourage-card mine-blend-section'},
       h('div',{class:'mine-encourage-copy'},h('b',null,'生活或许不完美，'),h('span',null,'但依然值得期待。')),
       h('div',{class:'mine-encourage-pet'},petFigure(activePet)));
   }
-  view.append(...[profileCard, ptsCard, setCard, dataCard, installCard, encourageCard, aboutCard].filter(Boolean));
+  view.append(...[profileCard, ptsCard, setCard, dataCard, appCard, encourageCard, aboutCard].filter(Boolean));
 }
-function setRow(label, ctrl) {
-  return h('div', { class: 'row-item' }, h('span', { style: 'font-size:14px;font-weight:600;flex:none' }, label), ctrl);
+function settingRow(label, ctrl) {
+  return h('label',{class:'setting-row'},h('span',null,label),ctrl);
+}
+function mineMenu(title, sub, ic, onClick, tone='') {
+  return h('button',{class:'mine-menu-item'+(tone?' '+tone:''),onclick:onClick},
+    h('span',{class:'mine-menu-icon'},icon(ic)),
+    h('span',{class:'mine-menu-copy'},h('b',null,title),sub?h('small',null,sub):null),icon('right'));
 }
 
 async function editProfile(ctx) {
@@ -174,7 +136,7 @@ async function editProfile(ctx) {
     content: h('div', { class: 'form-list' },
       h('div', { class: 'form-item' }, avatarEl),
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '昵称'), nickInp),
-      h('div', { class: 'form-hint' }, '账户名是本机标识，不支持修改；没有退出账户的概念，换设备请用备份迁移')),
+      h('div', { class: 'form-hint' }, '账户名用于本机档案标识；换设备时可以通过备份迁移资料')),
     actions: [
       { label: '取消', onClick: (c) => c() },
       {

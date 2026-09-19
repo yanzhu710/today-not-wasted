@@ -1,28 +1,44 @@
-// 今天没白过 · 声效系统（WebAudio 本地合成，无外部音频文件，可一键静音）
+// 今天没白过 · 声效系统（WebAudio 本地合成，无外部音频文件）
 let ctx = null, master = null;
-let _muted = false, _vol = 0.7;
+let _muted = false, _vol = 0.7, _unlocked = false, _resumePromise = null;
 
 export function initSound() {
-  if (ctx) return;
+  if (ctx && ctx.state !== 'closed') return ctx;
   try {
     const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
+    if (!AC) return null;
     ctx = new AC();
     master = ctx.createGain();
     master.gain.value = _muted ? 0 : _vol;
     master.connect(ctx.destination);
-  } catch { ctx = null; }
+    return ctx;
+  } catch { ctx = null; master = null; return null; }
 }
-// 必须在用户手势里调用一次，满足浏览器自动播放策略
-export function unlockAudio() {
+
+async function ensureRunning() {
   initSound();
-  if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+  if (!ctx || _muted) return false;
+  if (ctx.state === 'running') return true;
+  if (ctx.state === 'closed') { ctx = null; master = null; initSound(); }
+  if (!ctx) return false;
+  if (!_resumePromise) {
+    _resumePromise = Promise.resolve(ctx.resume()).catch(()=>{}).finally(()=>{ _resumePromise = null; });
+  }
+  await _resumePromise;
+  return !!ctx && ctx.state === 'running';
 }
-export function setMuted(m) { _muted = !!m; if (master) master.gain.value = _muted ? 0 : _vol; }
-export function setVolume(v) { _vol = Math.max(0, Math.min(1, v / 100)); if (master && !_muted) master.gain.value = _vol; }
+
+// 必须在用户手势中至少调用一次。之后页面切换/回前台会尽量恢复同一个音频上下文。
+export async function unlockAudio() {
+  _unlocked = true;
+  return ensureRunning();
+}
+export function setMuted(m) { _muted = !!m; if (master) master.gain.value = _muted ? 0 : _vol; if (!_muted && _unlocked) ensureRunning(); }
+export function setVolume(v) { _vol = Math.max(0, Math.min(1, Number(v) / 100)); if (master && !_muted) master.gain.value = _vol; }
 export function isMuted() { return _muted; }
 
 function tone(freq, at, dur, { type = 'sine', gain = 0.3, slideTo = null } = {}) {
+  if (!ctx || !master || ctx.state !== 'running') return;
   const o = ctx.createOscillator();
   const g = ctx.createGain();
   o.type = type;
@@ -34,10 +50,8 @@ function tone(freq, at, dur, { type = 'sine', gain = 0.3, slideTo = null } = {})
   o.connect(g); g.connect(master);
   o.start(at); o.stop(at + dur + 0.05);
 }
-export function play(name) {
-  if (_muted || !ctx) return;
-  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-  if (ctx.state !== 'running') return;
+function emit(name) {
+  if (!ctx || ctx.state !== 'running' || _muted) return;
   const t = ctx.currentTime;
   switch (name) {
     case 'tap': tone(1180, t, 0.05, { type: 'triangle', gain: 0.14 }); break;
@@ -53,4 +67,16 @@ export function play(name) {
     case 'pop': tone(880, t, 0.05, { type: 'triangle', gain: 0.16 }); break;
     default: tone(880, t, 0.06, { type: 'triangle', gain: 0.12 });
   }
+}
+export function play(name) {
+  if (_muted) return;
+  // Safari may suspend AudioContext after backgrounding. Resume first, then play instead of dropping the sound.
+  ensureRunning().then(ok => { if (ok) emit(name); });
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && _unlocked && !_muted) ensureRunning();
+  });
+  window.addEventListener?.('pageshow', () => { if (_unlocked && !_muted) ensureRunning(); });
 }

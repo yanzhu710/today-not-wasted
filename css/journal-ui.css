@@ -728,3 +728,93 @@ button{min-width:0}
 :root[data-theme="dark"] .record-date-brush{background:linear-gradient(92deg,#3c4d40,#435345)}:root[data-theme="dark"] .record-date-brush b,:root[data-theme="dark"] .record-date-brush small{color:#e7e5d6}
 :root[data-theme="dark"] .record-timeline-art .timeline-row{background:linear-gradient(150deg,#27332c,#2d3931);border-color:#425047;box-shadow:0 7px 18px rgba(0,0,0,.12)}:root[data-theme="dark"] .record-timeline-art .timeline-row .record-kind-icon{border-color:#18211d}
 :root[data-theme="dark"] .reward-art-banner{background:radial-gradient(circle at 83% 17%,rgba(215,181,104,.13),transparent 31%),linear-gradient(140deg,#3d382a,#30392f 58%,#304238)!important}:root[data-theme="dark"] .reward-feature-chips span{background:#334238;color:#d9dfd1}:root[data-theme="dark"] .reward-upload-preview{background:linear-gradient(145deg,#344238,#463f31)}
+
+
+/* v2.4.3 — layout containment and pet-led empty states */
+html,body,#app,.shell,.view,.modal-card,.modal-body,.form-list,.form-item,.field-row,.row-item,.row-main{max-width:100%;min-width:0}
+html,body,#app,.shell,.view{overflow-x:hidden!important}
+.modal-back{padding-inline:10px!important}
+.modal-card{width:min(100%,620px)!important;max-width:calc(100vw - 20px)!important;overflow:hidden!important}
+.modal-body{overflow-x:hidden!important}
+.form-list,.form-item{width:100%}
+.field-row{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr));gap:10px;width:100%}
+.field-row>*{min-width:0!important;width:100%!important}
+input.input,select.input,textarea.input{width:100%!important;min-width:0!important}
+.seg,.route-tabs{max-width:100%;min-width:0}
+.btn,.route-tab,.tab-item,.more{min-width:0}
+.btn{white-space:nowrap}
+.pet-empty-state{position:relative;min-height:142px;padding:22px 148px 20px 20px;border-radius:24px;overflow:hidden;background:linear-gradient(135deg,color-mix(in srgb,var(--primary-soft) 68%,transparent),transparent 72%);border:1px dashed color-mix(in srgb,var(--primary) 22%,var(--line));display:grid;align-content:center;gap:6px}
+.pet-empty-state.compact{min-height:112px;padding-top:16px;padding-bottom:16px}
+.pet-empty-copy{display:grid;gap:6px;position:relative;z-index:2}.pet-empty-copy b{font-size:16px;line-height:1.35}.pet-empty-copy span{font-size:13px;color:var(--muted);line-height:1.7}
+.pet-empty-figure{position:absolute;right:8px;bottom:-12px;width:142px;height:142px}.pet-empty-figure .paper-pet{width:100%;height:100%}.pet-empty-fallback{position:absolute;right:34px;bottom:20px;font-size:64px;color:var(--primary);opacity:.25}.pet-empty-action{justify-self:start;margin-top:4px}
+@media(max-width:350px){.pet-empty-state{padding-right:112px}.pet-empty-figure{width:112px;height:112px}.pet-empty-copy b{font-size:15px}.pet-empty-copy span{font-size:12px}}
+
+/* v2.4.3 — interaction cleanup, fixed-width layout and clearer navigation */
+.route-tabs{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));grid-auto-flow:row!important;overflow:hidden!important;gap:6px}
+.route-tab{width:100%;min-width:0!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seg{display:flex!important;flex-wrap:wrap!important;overflow:hidden!important;gap:6px}
+.seg>button{flex:1 1 92px;min-width:0!important;white-space:nowrap}
+
+/* Today action cards: creation and history are both explicit. */
+.ref-action-card{position:relative;display:grid!important;grid-template-rows:1fr auto;padding:10px 8px 8px!important;min-height:132px!important;overflow:hidden}
+.ref-action-main{min-height:84px!important;gap:5px!important}.ref-action-main b{font-size:16px}.ref-action-create{font-size:11px;color:var(--muted);font-weight:500}
+.ref-action-history{position:static!important;width:100%!important;height:32px!important;border-radius:999px!important;display:flex!important;align-items:center;justify-content:center;gap:4px;background:color-mix(in srgb,var(--primary-soft) 64%,transparent)!important;border:0!important;color:var(--primary-deep)!important;font-size:11px!important;white-space:nowrap}
+.ref-action-history .ic{font-size:12px!important}
+.ref-hero-scene-clean{background:linear-gradient(180deg,#fffaf1 0%,#fbf6e9 62%,#dfe6cf 63%,#c2ceb1 100%)!important}
+.ref-hero-scene-clean::before{opacity:.58!important}.ref-hero-scene-clean::after{opacity:.55!important}
+.ref-hero-note{position:absolute;right:18px;bottom:23px;z-index:6;padding:8px 12px;border-radius:15px;background:rgba(255,252,243,.88);color:#5c6b60;font-size:11px;line-height:1.35;white-space:nowrap;box-shadow:0 3px 12px rgba(75,61,42,.08)}
+.ref-hero-scene-clean .ref-hero-bubble{left:auto;right:18px;top:28px;max-width:190px}
+
+/* Plan: a title + select is more stable than another crowded tab row. */
+.plan-view-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:2px 0 14px;padding:5px 2px 10px;border-bottom:1px dashed var(--line)}
+.plan-view-head>div{display:grid;gap:2px;min-width:0}.plan-view-head>div b{font-size:20px}.plan-view-head>div span{font-size:12px;color:var(--muted)}
+.plan-view-head label{display:flex;align-items:center;gap:8px;flex:none}.plan-view-head label>span{font-size:12px;color:var(--muted);white-space:nowrap}.plan-view-select{width:auto!important;min-width:132px!important;max-width:168px!important;padding-right:34px!important}
+
+/* Companion picker: fill the row evenly, no mysterious left gap. */
+.ref-pet-switcher{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px!important;justify-content:stretch!important;margin:0 0 10px!important;width:100%;overflow:hidden!important}
+.ref-pet-chip{width:100%;justify-content:center;padding:5px 7px!important}.ref-pet-chip span,.ref-pet-chip small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Store / reward areas blend with the page instead of becoming another wall of cards. */
+.reward-custom-hero,.reward-custom-list,.review-hub,.mine-about-inline,.mine-blend-section{border:0!important;box-shadow:none!important;background:transparent!important}
+.reward-custom-hero{display:flex;align-items:center;gap:14px;padding:18px 4px 12px}.reward-custom-copy{display:grid;gap:5px}.reward-custom-copy>b{font-size:18px}.reward-custom-copy p{margin:0;color:var(--muted);font-size:13px;line-height:1.65}.reward-add-btn{flex:none}
+.section-inline-title{display:flex;justify-content:space-between;align-items:center;margin:12px 2px 9px}.section-inline-title b{font-size:16px}.section-inline-title span{font-size:12px;color:var(--muted)}
+.reward-history-title{margin:12px 0 4px;font-size:12px;font-weight:700;color:var(--muted)}
+
+/* My page: one clear settings pattern, not rows of cramped segmented controls. */
+.setting-row{display:grid;grid-template-columns:minmax(88px,1fr) minmax(150px,210px);gap:14px;align-items:center;padding:12px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 55%,transparent)}
+.setting-row:last-child{border-bottom:0}.setting-row>span{font-size:14px;font-weight:650}.setting-select{height:44px!important;padding:8px 36px 8px 12px!important}
+.setting-volume{display:flex;align-items:center;gap:8px;min-width:0}.mine-volume{flex:1}.setting-volume .btn{flex:none}
+.mine-menu-list{display:grid}.mine-menu-item{display:grid;grid-template-columns:38px minmax(0,1fr) 18px;align-items:center;gap:10px;width:100%;padding:12px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 52%,transparent);text-align:left}.mine-menu-item:last-child{border-bottom:0}.mine-menu-icon{width:36px;height:36px;border-radius:12px;background:var(--primary-soft);display:grid;place-items:center;color:var(--primary-deep)}.mine-menu-copy{display:grid;min-width:0}.mine-menu-copy b{font-size:14px}.mine-menu-copy small{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mine-menu-item>.ic{color:var(--muted);font-size:14px}.mine-menu-item.danger .mine-menu-icon{background:var(--danger-soft);color:var(--danger)}
+.mine-about-inline{display:grid;justify-items:center;gap:3px;padding:15px 8px 24px;color:var(--muted)}.mine-about-inline b{font-size:16px;color:var(--text)}.mine-about-inline span{font-size:12px}.mine-about-inline small{font-size:11px}
+.mine-encourage-card{border-radius:26px;padding:14px 14px 0!important;margin:8px 0 12px}
+
+/* Review: one warm hub, one share system for week/month. */
+.review-hub{position:relative;overflow:hidden;margin-top:14px;padding:22px 4px 8px;display:grid;gap:12px;background:linear-gradient(180deg,transparent,color-mix(in srgb,var(--reward-soft) 22%,transparent))!important}
+.review-hub-copy{max-width:72%;display:grid;gap:4px}.review-hub-copy>span{font-size:11px;letter-spacing:1.5px;color:var(--reward);font-weight:800}.review-hub-copy h2{font-size:21px;margin:0}.review-hub-copy p{font-size:13px;line-height:1.65;color:var(--muted);margin:0}.review-hub-pet{position:absolute;right:-8px;top:-4px;width:135px;height:135px;opacity:.95}.review-hub-pet .paper-pet{width:100%;height:100%}
+.review-period-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;position:relative;z-index:2}.review-period{background:var(--surface);border:1px solid color-mix(in srgb,var(--line) 65%,transparent);border-radius:22px;padding:14px;box-shadow:var(--shadow)}.review-period-head{display:flex;align-items:center;gap:6px;min-width:0}.review-period-head b{font-size:15px;white-space:nowrap}.review-period-head small{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.review-period-head .tag{margin-left:auto}
+.review-metrics{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:11px 0}.review-metrics>span{display:grid;padding:8px;border-radius:14px;background:var(--surface2)}.review-metrics b{font-size:15px}.review-metrics small{font-size:10px;color:var(--muted)}.review-period-actions{display:flex;gap:6px;align-items:center}.review-period-actions .btn{flex:1;padding-inline:9px}.review-confirmed{font-size:11px;color:var(--muted);flex:1}.review-share-main{justify-self:center;min-width:min(280px,100%);position:relative;z-index:2}
+
+/* Keep every functional surface inside the viewport. */
+.cal-grid{width:100%!important;grid-template-columns:repeat(7,minmax(0,1fr))!important;overflow:hidden!important}.cal-cell{min-width:0!important}.cal-head,.ledger-sum,.stat-row,.btn-row{max-width:100%;min-width:0}
+.shop-grid,.reward-custom-grid,.badge-grid,.ref-overview-grid,.today-plan-summary{max-width:100%;min-width:0}
+.exchange-confirm{white-space:nowrap!important;font-size:13px!important;min-width:0}
+
+@media(max-width:430px){
+  .ref-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.ref-action-card{min-height:122px!important}
+  .ref-hero-scene-clean .ref-hero-bubble{right:9px;max-width:145px;font-size:11px}.ref-hero-note{right:10px;bottom:16px;font-size:10px;padding:6px 9px}
+  .review-period-grid{grid-template-columns:1fr}.review-hub-copy{max-width:68%}.review-hub-pet{width:115px;height:115px}
+  .setting-row{grid-template-columns:1fr}.setting-row>*{width:100%!important;max-width:none!important}.setting-volume{width:100%}
+  .plan-view-head{align-items:flex-end}.plan-view-head label{display:grid;gap:4px}.plan-view-select{min-width:124px!important}
+  .reward-custom-hero{align-items:flex-start;flex-direction:column}.reward-add-btn{width:100%}
+}
+@media(max-width:350px){
+  .ref-pet-switcher{grid-template-columns:repeat(2,minmax(0,1fr))}.ref-pet-chip:last-child:nth-child(odd){grid-column:1/-1}
+  .plan-view-head{display:grid;grid-template-columns:1fr}.plan-view-head label{grid-template-columns:auto 1fr}.plan-view-select{max-width:none!important;width:100%!important}
+  .review-hub-copy{max-width:100%;padding-right:86px}.review-hub-pet{width:92px;height:92px}
+}
+:root[data-theme="dark"] .review-period{background:var(--night-surface);border-color:#445249}:root[data-theme="dark"] .review-metrics>span{background:#303b34}:root[data-theme="dark"] .pet-empty-state{background:linear-gradient(135deg,#2b3930,transparent);border-color:#455548}
+
+
+/* v2.4.3 final mobile containment */
+input[type="time"],input[type="date"],input[type="number"],select,textarea{min-inline-size:0!important;max-inline-size:100%!important}
+@media(max-width:480px){.time-range-row{grid-template-columns:1fr!important}.time-range-arrow{display:none!important}.time-range-row label{width:100%!important}.modal-actions{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}.modal-actions .btn{width:100%!important;min-width:0!important}.btn-row{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}.btn-row>.btn{width:100%!important}}

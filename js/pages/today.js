@@ -45,15 +45,12 @@ export async function renderToday(view, ctx) {
     figure = petFigure(active, { interactive: true, onDispose: ctx.onDispose, onClick: () => {
       sound.play('pet'); petResponse(figure, bubble, '我在呢，慢慢来就好。', 'touch');
     }});
-    const scene = h('div', { class: 'ref-hero-scene' },
+    const scene = h('div', { class: 'ref-hero-scene ref-hero-scene-clean' },
       h('span', { class: 'ref-leaf leaf-a', 'aria-hidden':'true' }),
       h('span', { class: 'ref-leaf leaf-b', 'aria-hidden':'true' }),
-      h('span', { class: 'ref-grass', 'aria-hidden':'true' }),
       h('div', { class: 'ref-hero-pet' }, figure),
       bubble,
-      h('div', { class: 'ref-food-bowl', 'aria-hidden':'true' }, h('span',null,'✦')),
-      h('div', { class: 'ref-sticky' }, '小事也值得被', h('br'), '认真记录！', h('br'), h('b', null, '汪～')),
-      h('span', { class:'ref-heart', 'aria-hidden':'true' }, '♥'));
+      h('div', { class:'ref-hero-note' }, summary.validEvents ? `今天留下 ${summary.validEvents} 条记录` : '从一件小事开始吧'));
     const hero = h('section', { class:'ref-hero card' },
       scene,
       h('div', { class:'ref-hero-footer' },
@@ -74,8 +71,8 @@ export async function renderToday(view, ctx) {
   const actionGrid=h('section',{class:'ref-action-grid'});
   primaryActions.forEach((item,i)=>{
     const card=h('div',{class:`ref-action-card tone-${i}`},
-      h('button',{class:'ref-action-main','aria-label':item.label,onclick:item.action},h('span',{class:'ref-action-blob'},icon(item.ic)),h('b',null,item.label)),
-      h('button',{class:'ref-action-history','aria-label':`查看${item.label}记录`,onclick:()=>{location.hash='#/'+item.href;}},icon('book')));
+      h('button',{class:'ref-action-main','aria-label':`新建${item.label}`,onclick:item.action},h('span',{class:'ref-action-blob'},icon(item.ic)),h('b',null,item.label),h('span',{class:'ref-action-create'},'新建')),
+      h('button',{class:'ref-action-history','aria-label':`查看${item.label}记录`,onclick:()=>{location.hash='#/'+item.href;}},h('span',null,'看记录'),icon('right')));
     actionGrid.append(card);
   });
   view.append(actionGrid);
@@ -115,10 +112,10 @@ export async function renderToday(view, ctx) {
       h('button',{class:'btn btn-soft btn-sm',onclick:()=>taskDialog()},icon('plus'),'新建任务'),
       h('button',{class:'btn btn-soft btn-sm',onclick:async()=>{const m=await import('./plan.js');m.habitDialog();}},icon('plus'),'新建习惯')));
   const taskGroup=h('div',{class:'today-plan-group'},h('div',{class:'today-plan-label'},h('b',null,'待办'),h('button',{onclick:()=>{location.hash='#/plan?tab=tasks';}},'全部')));
-  if(!todayTasks.length)taskGroup.append(h('p',{class:'paper-empty'},'今天还没有待办，可以直接新建。'));
+  if(!todayTasks.length){const {petEmptyState}=await import('../ui/empty.js');taskGroup.append(await petEmptyState('tasks',{compact:true,actionLabel:'新建任务',onAction:()=>taskDialog()}));}
   else [...undone,...done].slice(0,4).forEach(t=>taskGroup.append(refTaskRow(t,tplById,ctx)));
   const habitGroup=h('div',{class:'today-plan-group'},h('div',{class:'today-plan-label'},h('b',null,'习惯'),h('button',{onclick:()=>{location.hash='#/plan?tab=habits';}},'全部')));
-  if(!due.length)habitGroup.append(h('p',{class:'paper-empty'},'今天没有需要打卡的习惯。'));
+  if(!due.length){const {petEmptyState}=await import('../ui/empty.js');habitGroup.append(await petEmptyState('habits',{compact:true,actionLabel:'新建习惯',onAction:async()=>{const m=await import('./plan.js');m.habitDialog();}}));}
   else due.slice(0,4).forEach(hb=>{const checked=logByHabit.has(hb.id);habitGroup.append(h('div',{class:'ref-habit-row'},
     h('button',{class:'checkbtn'+(checked?' on':''),'aria-label':(checked?'撤销':'完成')+hb.name,onclick:async()=>{if(checked)await doHabitUndo(hb,dk);else{const result=await doHabitDone(hb,dk);if(result)queueSettle([result]);}await ctx.rerender();}},icon('check')),
     h('span',{class:checked?'done':''},hb.name),h('small',null,habitFreqLabel(hb))));});
