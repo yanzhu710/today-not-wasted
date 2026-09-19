@@ -556,8 +556,11 @@ body[data-route="home"] .view[data-home-tab="home"]>.seg{display:none}.paper-ref
    v2.4.1 interaction polish: fixed-width mobile layout, no horizontal drift,
    single-line functional labels, timeline, reward stickers and finance charts.
    ======================================================================== */
-html,body,#app,.shell,.view,.modal-back,.modal-card,.modal-body{max-width:100%;overflow-x:hidden}
-html,body{width:100%;touch-action:pan-y;overscroll-behavior-x:none}
+html,body,#app,.shell,.view,.modal-back,.modal-card,.modal-body{max-width:100%}
+html,body{width:100%;touch-action:auto;overscroll-behavior-x:none;overscroll-behavior-y:auto}
+html{overflow-x:clip!important;overflow-y:auto!important}
+body{overflow-x:clip!important;overflow-y:visible!important}
+#app,.shell,.view{overflow-x:clip!important}
 img,svg,canvas,video{max-width:100%}
 .card,.row-item,.row-main,.form-list,.form-item,.field-row,.plan-content,.record-content{min-width:0;max-width:100%}
 input,select,textarea{width:100%;min-width:0}
@@ -640,8 +643,9 @@ button{min-width:0}
 .repair-chart-scroll{overflow-x:hidden!important;width:100%}.repair-bars{display:grid!important;grid-template-columns:repeat(var(--columns),minmax(0,1fr));gap:clamp(1px,.7vw,6px);min-width:0!important;width:100%;padding-inline:0}.repair-bar{min-width:0!important;width:100%}.repair-bar-area{width:100%;max-width:28px;min-width:2px}.repair-bars.dense .repair-bar-area{max-width:12px}.repair-bars.dense .repair-bar small{font-size:8px}.repair-bars.dense .repair-bar-value{display:none}.repair-heat{width:100%;max-width:100%;gap:clamp(2px,1vw,5px)}.repair-heat-cell{min-height:0;font-size:clamp(9px,2.6vw,11px)}
 
 /* No horizontal carousels: items reflow vertically/wrap. */
-.habit-strip,.showcase-strip,.ref-prop-list,.ref-pet-switcher,.today-swipe{overflow-x:hidden!important;scroll-snap-type:none!important}
-.habit-strip,.showcase-strip,.ref-pet-switcher{flex-wrap:wrap}.ref-prop-list{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.ref-prop{min-width:0!important;width:100%}.today-swipe{display:block!important;height:auto!important}.today-screen{width:100%;overflow-x:hidden!important}
+.habit-strip,.showcase-strip,.ref-prop-list,.ref-pet-switcher{overflow-x:hidden!important;scroll-snap-type:none!important}
+.today-swipe{overflow:visible!important;scroll-snap-type:none!important}
+.habit-strip,.showcase-strip,.ref-pet-switcher{flex-wrap:wrap}.ref-prop-list{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.ref-prop{min-width:0!important;width:100%}.today-swipe{display:block!important;height:auto!important}.today-screen{width:100%;overflow:visible!important}
 
 /* Modals never exceed the viewport or create sideways movement. */
 .modal-card{width:min(100%,480px);max-width:100vw}.modal-body{width:100%;max-width:100%;overflow-x:hidden}.mood-pick{max-width:100%;display:grid!important;grid-template-columns:repeat(auto-fit,minmax(58px,1fr));gap:6px}.mood-pick button{min-width:0}
@@ -732,7 +736,9 @@ button{min-width:0}
 
 /* v2.4.3 — layout containment and pet-led empty states */
 html,body,#app,.shell,.view,.modal-card,.modal-body,.form-list,.form-item,.field-row,.row-item,.row-main{max-width:100%;min-width:0}
-html,body,#app,.shell,.view{overflow-x:hidden!important}
+html,body{overflow-y:visible!important}
+html{overflow-y:auto!important}
+#app,.shell,.view{overflow-x:clip!important}
 .modal-back{padding-inline:10px!important}
 .modal-card{width:min(100%,620px)!important;max-width:calc(100vw - 20px)!important;overflow:hidden!important}
 .modal-body{overflow-x:hidden!important}
@@ -818,3 +824,71 @@ input.input,select.input,textarea.input{width:100%!important;min-width:0!importa
 /* v2.4.3 final mobile containment */
 input[type="time"],input[type="date"],input[type="number"],select,textarea{min-inline-size:0!important;max-inline-size:100%!important}
 @media(max-width:480px){.time-range-row{grid-template-columns:1fr!important}.time-range-arrow{display:none!important}.time-range-row label{width:100%!important}.modal-actions{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}.modal-actions .btn{width:100%!important;min-width:0!important}.btn-row{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}.btn-row>.btn{width:100%!important}}
+
+/* v2.4.5 — compact flow, safer mobile forms, embedded companion empty states */
+html,body,#app,.shell,.view{width:100%;max-width:100%;overflow-x:clip}
+main.view>*{max-width:100%;min-width:0}
+.modal-back{padding-inline:8px}
+.modal-card{inline-size:min(560px,calc(100vw - 16px))!important;max-inline-size:calc(100vw - 16px)!important;margin-inline:auto!important;padding-inline:18px!important}
+.modal-body,.modal-body>*{min-width:0;max-width:100%}
+.form-list,.form-item,.field-row,.time-range-field,.time-range-row,.time-range-row label{inline-size:100%;min-inline-size:0;max-inline-size:100%}
+.input,input.input,select.input,textarea.input,input[type="date"],input[type="time"],input[type="number"]{display:block!important;inline-size:100%!important;max-inline-size:100%!important;min-inline-size:0!important;box-sizing:border-box!important}
+input[type="date"],input[type="time"]{overflow:hidden!important;background-clip:padding-box!important}
+input[type="date"]::-webkit-date-and-time-value,input[type="time"]::-webkit-date-and-time-value{min-width:0!important;text-align:left!important}
+.time-range-row{grid-template-columns:1fr!important;gap:10px!important}.time-range-arrow{display:none!important}.time-range-input{width:100%!important}
+.modal-foot{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));width:100%}.modal-foot .btn{min-width:0;width:100%}
+
+/* Today's four primary actions live inside the companion card instead of occupying a second card row. */
+.today-hero-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:8px 10px 11px;border-top:1px dashed color-mix(in srgb,var(--line) 70%,transparent);background:color-mix(in srgb,var(--surface) 88%,transparent)}
+.today-hero-action{min-width:0;min-height:67px;border-radius:17px;display:grid;place-items:center;align-content:center;gap:2px;padding:6px 2px;color:var(--text);transition:transform .12s,background .12s}
+.today-hero-action:active{transform:scale(.96);background:var(--surface2)}
+.today-hero-action-icon{width:34px;height:34px;border-radius:14px;display:grid;place-items:center;background:var(--primary-soft);color:var(--primary-deep)}
+.today-hero-action.tone-1 .today-hero-action-icon{background:#f5e2a9;color:#8a6827}.today-hero-action.tone-2 .today-hero-action-icon{background:#f1d2cc;color:#a65f56}.today-hero-action.tone-3 .today-hero-action-icon{background:#dfe9d9;color:#5e785d}
+.today-hero-action b{font-size:13px;white-space:nowrap}.today-hero-action small{font-size:9px;color:var(--muted);white-space:nowrap;line-height:1.1}.today-action-fallback{padding:8px!important}
+.ref-hero{margin-bottom:12px}.ref-hero-footer{border-top:1px solid color-mix(in srgb,var(--line) 48%,transparent)}
+
+/* Plan has one top title (the global bar) and one four-way horizontal switch. */
+.plan-route-tabs{grid-template-columns:repeat(4,minmax(0,1fr))!important;margin:0 0 12px!important;gap:5px!important;padding:5px!important}
+.plan-route-tabs .route-tab{font-size:13px!important;padding-inline:4px!important;min-width:0!important}
+.plan-task-head{margin-bottom:10px!important}.plan-task-section{overflow:hidden}
+
+/* Empty states are part of the parent card/background — never a nested framed card. */
+.pet-empty-state.pet-empty-blend{position:relative;min-height:118px;padding:18px 132px 14px 2px!important;margin:2px 0 0;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;overflow:hidden;display:grid;align-content:center;gap:6px}
+.pet-empty-state.pet-empty-blend.compact{min-height:104px;padding-top:12px!important;padding-bottom:10px!important}
+.pet-empty-state.pet-empty-blend::before{content:"";position:absolute;inset:auto -18px -36px 28%;height:96px;background:radial-gradient(ellipse at center,color-mix(in srgb,var(--primary-soft) 58%,transparent),transparent 68%);pointer-events:none}
+.pet-empty-state.pet-empty-blend .pet-empty-copy{position:relative;z-index:2;max-width:230px}.pet-empty-state.pet-empty-blend .pet-empty-copy b{font-size:15px}.pet-empty-state.pet-empty-blend .pet-empty-copy span{font-size:12px;line-height:1.55}
+.pet-empty-state.pet-empty-blend .pet-empty-figure{right:-2px;bottom:-18px;width:128px;height:128px;opacity:.96}.pet-empty-state.pet-empty-blend .pet-empty-action{position:relative;z-index:3;margin-top:2px}
+.today-plan-group .pet-empty-state,.plan-task-section .pet-empty-state{margin-top:-2px}
+
+/* “我的” is intentionally short: profile + summary + one menu + reward band. */
+.mine-compact-page{display:grid;gap:10px}
+.mine-compact-hero{display:grid;grid-template-columns:58px minmax(0,1fr) 38px;align-items:center;gap:11px;padding:12px 4px 10px;border-bottom:1px dashed var(--line)}
+.mine-avatar{width:58px!important;height:58px!important;overflow:hidden;font-size:20px!important}.mine-compact-copy{display:grid;min-width:0;gap:3px}.mine-compact-copy b{font-size:18px}.mine-compact-copy span{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mine-edit-btn{width:36px;height:36px}
+.mine-summary-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));background:color-mix(in srgb,var(--surface) 75%,transparent);border:1px solid color-mix(in srgb,var(--line) 60%,transparent);border-radius:20px;overflow:hidden}
+.mine-summary-strip button{min-width:0;padding:11px 3px;display:grid;gap:1px;justify-items:center;border-right:1px solid color-mix(in srgb,var(--line) 55%,transparent)}.mine-summary-strip button:last-child{border-right:0}.mine-summary-strip b{font-size:17px;color:var(--primary-deep)}.mine-summary-strip span{font-size:10px;color:var(--muted);white-space:nowrap}
+.mine-compact-menu{padding:4px 16px!important}.mine-compact-menu .mine-menu-item{padding:11px 0}.mine-compact-menu .mine-menu-icon{width:34px;height:34px}
+.mine-reward-band{display:flex;align-items:center;gap:10px;padding:12px 4px}.mine-reward-band>div{display:grid;min-width:0;flex:1;gap:2px}.mine-reward-band b{font-size:14px}.mine-reward-band span{font-size:11px;color:var(--muted)}.mine-reward-band .btn{flex:none}.mine-footnote{text-align:center;color:var(--muted);font-size:10.5px;padding:5px 0 12px}
+.mine-setting-sheet .setting-row{grid-template-columns:minmax(78px,.8fr) minmax(150px,1.2fr)}.mine-about-sheet{display:grid;gap:8px;text-align:center;padding:10px}.mine-about-sheet b{font-size:20px}.mine-about-sheet p{font-size:13px;color:var(--muted);line-height:1.65}.mine-about-sheet span{font-size:12px;color:var(--muted)}
+
+/* Keep companion selector visually balanced at every normal phone width. */
+.ref-pet-switcher{grid-template-columns:repeat(3,minmax(0,1fr))!important;padding-inline:0!important;margin-inline:0!important}.ref-pet-chip{min-width:0!important}
+
+@media(max-width:430px){
+  .modal-back{padding-inline:6px}.modal-card{inline-size:calc(100vw - 12px)!important;max-inline-size:calc(100vw - 12px)!important;padding-inline:16px!important}
+  .today-hero-actions{gap:4px;padding-inline:7px}.today-hero-action{min-height:62px}.today-hero-action-icon{width:31px;height:31px;border-radius:12px}.today-hero-action b{font-size:12px}.today-hero-action small{font-size:8.5px}
+  .ref-hero-footer{grid-template-columns:auto auto minmax(40px,1fr) auto!important}.ref-hero-footer>span{display:none}.ref-partner-btn{grid-column:auto!important;width:auto!important;justify-content:center!important;margin:0!important;padding:7px 10px!important;min-height:34px!important;font-size:11px}
+  .pet-empty-state.pet-empty-blend{padding-right:108px!important}.pet-empty-state.pet-empty-blend .pet-empty-figure{width:108px;height:108px}.pet-empty-state.pet-empty-blend .pet-empty-copy b{font-size:14px}.pet-empty-state.pet-empty-blend .pet-empty-copy span{font-size:11.5px}
+  .mine-setting-sheet .setting-row{grid-template-columns:1fr}.mine-setting-sheet .setting-row>*{width:100%!important;max-width:none!important}
+}
+@media(max-width:350px){
+  .plan-route-tabs .route-tab{font-size:12px!important}.today-hero-action small{display:none}.today-hero-action{min-height:54px}
+  .mine-summary-strip b{font-size:15px}.mine-summary-strip span{font-size:9px}.pet-empty-state.pet-empty-blend{padding-right:94px!important}.pet-empty-state.pet-empty-blend .pet-empty-figure{width:94px;height:94px}
+}
+:root[data-theme="dark"] .today-hero-actions{background:color-mix(in srgb,var(--surface) 92%,transparent)}
+:root[data-theme="dark"] .mine-summary-strip{background:rgba(43,47,54,.8)}
+/* v2.4.5 mobile hardening */
+.pet-empty-state.pet-empty-blend::before{right:0!important}.pet-empty-state.pet-empty-blend .pet-empty-figure{right:0!important}
+@media(max-width:430px){
+  .field-row{display:grid!important;grid-template-columns:1fr!important;gap:10px!important}
+  .field-row>*{width:100%!important;max-width:100%!important;min-width:0!important}
+}

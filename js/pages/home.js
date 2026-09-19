@@ -370,12 +370,12 @@ async function renderBag(box, ctx) {
         h('button', { class: 'btn btn-soft btn-sm', onclick: () => usePerm(item, ctx) }, catLabelUse(item.cat))));
     }
   }
-  if (!hasC) cardC.append(h('div', { class: 'empty' }, '背包里还没有消耗品'));
-  if (!hasP) cardP.append(h('div', { class: 'empty' }, '兑换的永久物品会出现在这里'));
+  if (!hasC) { const {petEmptyState}=await import('../ui/empty.js'); cardC.append(await petEmptyState('bagConsumable',{compact:true})); }
+  if (!hasP) { const {petEmptyState}=await import('../ui/empty.js'); cardP.append(await petEmptyState('bagPermanent',{compact:true})); }
   const rewardHistory = await renderRedeemedRewards(ctx);
   box.append(cardC, cardP, rewardHistory,
     h('div', { class: 'form-hint', style: 'text-align:center;line-height:1.8' },
-      '食物和玩具可以直接使用；旧家具与穿戴只保留历史收藏，不再提供新的操作入口。'));
+      '食物和玩具可以直接使用；收藏过的物品会继续留在这里。'));
 }
 async function renderRedeemedRewards(ctx){
   const rows=(await all('custom_rewards')).filter(r=>r.redeemedAt||r.fulfilledAt||r.doneAt).sort((a,b)=>(b.redeemedAt||b.doneAt||0)-(a.redeemedAt||a.doneAt||0));

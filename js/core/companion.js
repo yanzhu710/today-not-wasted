@@ -21,10 +21,10 @@ export async function memoriesCard(pet) {
   const selected=[],seen=new Set();
   for(const e of evs){const key=e.kind==='journal'?'journal':e.category||e.kind;if(seen.has(key))continue;seen.add(key);selected.push(e);if(selected.length===6)break;}
   const card=h('div',{class:'card repair-memories'},h('div',{class:'card-title'},'一起留下的生活记忆'));
-  if(!selected.length)card.append(h('div',{class:'empty'},'保存第一条生活记录后，这里会留下真实的纪念。'));
+  if(!selected.length){const {petEmptyState}=await import('../ui/empty.js');card.append(await petEmptyState('memory',{compact:true}));}
   for(const e of selected)card.append(h('div',{class:'row-item'},h('div',{class:'row-main'},
     h('div',{class:'row-title'},e.kind==='journal'?'第一次留下手账':`第一段${catName(e.category)}记录`),
     h('div',{class:'row-sub'},e.dateKey+' · '+companionResponse(e)))));
-  card.append(h('div',{class:'form-hint'},'根据领养后仍保留的原始记录整理；不会凭空生成经历，删除记录后相应记忆会更新。'));
+  card.append(h('div',{class:'form-hint'},'这些回忆来自你真实留下的生活记录。'));
   return card;
 }

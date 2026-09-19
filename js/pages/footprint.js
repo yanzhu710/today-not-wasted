@@ -258,7 +258,7 @@ async function renderTimeline(box) {
   const byDate = new Map();
   for (const e of valid) { if (!byDate.has(e.dateKey)) byDate.set(e.dateKey, []); byDate.get(e.dateKey).push(e); }
   const card = h('div', { class: 'card' });
-  if (!valid.length) card.append(h('div', { class: 'empty' }, '还没有记录，从「今天」开始'));
+  if (!valid.length) { const {petEmptyState}=await import('../ui/empty.js'); card.append(await petEmptyState('records',{compact:true})); }
   let lastD = '';
   for (const e of valid) {
     if (e.dateKey !== lastD) {
@@ -287,7 +287,7 @@ async function renderJournal(box, ctx) {
   const card = h('div', { class: 'card' },
     h('div', { class: 'card-title' }, icon('journal'), '生活手账',
       h('button', { class: 'more', onclick: () => journalDialog() }, icon('plus'), '写一句')));
-  if (!entries.length) card.append(h('div', { class: 'empty' }, '一句话也好，今天的值得留下。', h('button', { class: 'act', onclick: () => journalDialog() }, '写第一句')));
+  if (!entries.length) { const {petEmptyState}=await import('../ui/empty.js'); card.append(await petEmptyState('journal',{compact:true,actionLabel:'写一句',onAction:()=>journalDialog()})); }
   const { get: getRow } = await import('../core/db.js');
   for (const j of entries.slice(0, 60)) {
     const mood = moodById(j.mood);
@@ -513,7 +513,7 @@ async function renderReview(box, ctx) {
   const wkDone=reviews.some(r=>r.id===`week:${wk}`), mkDone=reviews.some(r=>r.id===`month:${mk}`);
   let pet=null;try{const active=pets.find(p=>p.petId===meta.activePet)||pets[0];if(active){const {petFigure}=await import('../ui/paper.js');pet=petFigure(active);}}catch{}
   const hub=h('section',{class:'review-hub'},
-    h('div',{class:'review-hub-copy'},h('span',null,'回顾'),h('h2',null,'把这一段生活收好'),h('p',null,'周回顾和月回顾都在这里，分享也使用同一套新版模板。')),
+    h('div',{class:'review-hub-copy'},h('span',null,'回顾'),h('h2',null,'把这一段生活收好'),h('p',null,'看看这一周或这个月留下了什么，也可以生成分享卡。')),
     pet?h('div',{class:'review-hub-pet'},pet):null,
     h('div',{class:'review-period-grid'},
       reviewPeriod('week','本周',weekLabel(wk),weekDays,weekTasks,weekFocus,weekBadges,wkDone),

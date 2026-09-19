@@ -34,7 +34,7 @@ body {
     repeating-linear-gradient(transparent, transparent 39px, rgba(200, 185, 150, 0.4) 39px, rgba(200, 185, 150, 0.4) 40px);
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
   font-size: 15px; line-height: 1.5;
-  overscroll-behavior-y: none;
+  overscroll-behavior-y: auto;
 }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; touch-action: manipulation; }
 input, select, textarea { font: inherit; color: inherit; }

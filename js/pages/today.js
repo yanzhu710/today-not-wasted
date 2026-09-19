@@ -37,6 +37,20 @@ export async function renderToday(view, ctx) {
   view.replaceChildren();
   view.classList.add('paper-today', 'paper-reference-page');
 
+  const primaryActions = [
+    { ic:'quick', label:'记录', createLabel:'记一件小事', action:()=>quickRecordDialog(), href:'footprint?tab=timeline&filter=quick' },
+    { ic:'focus', label:'专注', createLabel:'开始专注', action:()=>openFocus(), href:'footprint?tab=timeline&filter=focus' },
+    { ic:'heart', label:'心情', createLabel:'写下心情', action:async()=> (await import('./footprint.js')).journalDialog(), href:'footprint?tab=timeline&filter=journal' },
+    { ic:'ledger', label:'记账', createLabel:'记一笔账', action:()=>quickLedgerDialog(), href:'footprint?tab=timeline&filter=ledger' },
+  ];
+  const openPrimaryAction = item => actionSheet(item.label,[
+    {ic:item.ic,label:item.createLabel,onClick:item.action},
+    {ic:'footprint',label:'查看记录',onClick:()=>{location.hash='#/'+item.href;}},
+  ]);
+  const actionDock = h('div',{class:'today-hero-actions','aria-label':'今天快捷入口'},
+    primaryActions.map((item,i)=>h('button',{class:`today-hero-action tone-${i}`,'aria-label':`${item.label}：新建或查看记录`,onclick:()=>openPrimaryAction(item)},
+      h('span',{class:'today-hero-action-icon'},icon(item.ic)),h('b',null,item.label),h('small',null,'新建 / 记录'))));
+
   if (active && def) {
     const progress = stageProgress(active.growth || 0);
     const bubble = h('p', { class: 'ref-hero-bubble', 'aria-live': 'polite' },
@@ -58,25 +72,12 @@ export async function renderToday(view, ctx) {
         h('strong', null, active.name || def.name),
         h('progress', { class:'paper-progress', value:Math.max(0,Math.min(1,progress.ratio)), max:'1', 'aria-label':'当前阶段成长进度' }),
         h('span', null, progress.next ? `${active.growth||0}/${progress.next.min}` : '一起同行'),
-        h('button', { class:'btn ref-partner-btn', onclick:()=>{ location.hash='#/home?tab=home'; } }, '查看伙伴', icon('right'))));
+        h('button', { class:'btn ref-partner-btn', onclick:()=>{ location.hash='#/home?tab=home'; } }, '查看伙伴', icon('right'))),
+      actionDock);
     view.append(hero);
+  } else {
+    view.append(h('section',{class:'card today-action-fallback'},actionDock));
   }
-
-  const primaryActions = [
-    { ic:'quick', label:'记录', action:()=>quickRecordDialog(), href:'footprint?tab=timeline&filter=quick' },
-    { ic:'focus', label:'专注', action:()=>openFocus(), href:'footprint?tab=timeline&filter=focus' },
-    { ic:'heart', label:'心情', action:async()=> (await import('./footprint.js')).journalDialog(), href:'footprint?tab=timeline&filter=journal' },
-    { ic:'ledger', label:'记账', action:()=>quickLedgerDialog(), href:'footprint?tab=timeline&filter=ledger' },
-  ];
-  const actionGrid=h('section',{class:'ref-action-grid'});
-  primaryActions.forEach((item,i)=>{
-    const card=h('div',{class:`ref-action-card tone-${i}`},
-      h('button',{class:'ref-action-main','aria-label':`新建${item.label}`,onclick:item.action},h('span',{class:'ref-action-blob'},icon(item.ic)),h('b',null,item.label),h('span',{class:'ref-action-create'},'新建')),
-      h('button',{class:'ref-action-history','aria-label':`查看${item.label}记录`,onclick:()=>{location.hash='#/'+item.href;}},h('span',null,'看记录'),icon('right')));
-    actionGrid.append(card);
-  });
-  view.append(actionGrid);
-
 
   const overview = h('section',{class:'card ref-overview-card'},
     h('div',{class:'ref-card-head'},h('h2',null,'今日总览'),h('small',null,'每一份努力都算数 ✦')),
@@ -217,7 +218,7 @@ export async function taskDialog(task = null) {
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '标题'), titleInp),
       h('div', { class: 'field-row' }, h('div', { class: 'form-item', style: 'flex:1' }, h('span', { class: 'form-label' }, '日期'), dateInp), h('div', { class: 'form-item', style: 'flex:1' }, h('span', { class: 'form-label' }, '预计用时（计划）'), estInp)),
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '生活分类'), catSel),
-      h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '重复'), repSeg, weekRow, h('span', { class: 'form-hint' }, '重复任务会按规则每天自动出现，可顺延可撤销，不惩罚断签')),
+      h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '重复'), repSeg, weekRow, h('span', { class: 'form-hint' }, '重复任务会按设定日期自动出现，随时可以顺延或撤销。')),
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '子任务'), subTa),
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '备注'), noteInp)),
     actions: [

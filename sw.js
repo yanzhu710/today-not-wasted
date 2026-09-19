@@ -1,6 +1,6 @@
-// v2.4.4. All executable dependencies are cached as a unit; artwork is optional.
+// v2.4.5. All executable dependencies are cached as a unit; artwork is optional.
 // Never stores user records, never calls IndexedDB, never clears another app's cache.
-const RELEASE = '2.4.4';
+const RELEASE = '2.4.5';
 const PREFIX = 'tjmbg-app:' + encodeURIComponent(new URL(self.registration.scope).pathname) + ':';
 const CACHE = PREFIX + RELEASE;
 const CORE = [

@@ -189,7 +189,7 @@ export async function toggleMute() {
 async function openPlusSheet() {
   const { actionSheet } = await import('./core/fx.js');
   await actionSheet('记一笔今天', [
-    { ic: 'quick', label: '记录一件小事', sub: '已经发生的事，统一放进「记录」', onClick: () => import('./pages/today.js').then((m) => m.quickRecordDialog()) },
+    { ic: 'quick', label: '记录一件小事', sub: '记下今天已经发生的一件小事', onClick: () => import('./pages/today.js').then((m) => m.quickRecordDialog()) },
     { ic: 'task', label: '新建任务', onClick: () => import('./pages/today.js').then((m) => m.taskDialog()) },
     { ic: 'focus', label: '开始专注', onClick: () => import('./pages/focus.js').then(m => m.openFocus()).catch(e => { console.error(e); fx.toast('专注计时打开失败，请重试',{ic:'error'}); }) },
     { ic: 'ledger', label: '记一笔', onClick: () => import('./pages/today.js').then((m) => m.quickLedgerDialog()) },
@@ -202,6 +202,13 @@ function globalListeners() {
   // 音频解锁
   const unlock = () => { sound.unlockAudio(); document.removeEventListener('pointerdown', unlock); };
   document.addEventListener('pointerdown', unlock, { once: false });
+  // Give ordinary controls consistent tactile audio feedback. Special actions can still play their own
+  // completion/purchase/pet sound; identical tap sounds are coalesced in sound.play().
+  document.addEventListener('click', (e) => {
+    const control = e.target?.closest?.('button, a, [role=\"button\"]');
+    if (!control || control.disabled || control.getAttribute('aria-disabled') === 'true' || control.dataset.silentSound === '1') return;
+    sound.play('tap');
+  }, { passive: true });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') fx.closeTopModal(); });
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();

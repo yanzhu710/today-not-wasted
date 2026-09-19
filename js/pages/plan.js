@@ -5,6 +5,8 @@ import { doTaskComplete, doTaskUndo, doHabitDone, doHabitUndo, toggleMilestone, 
 import { h, icon, uid, todayKey, addDaysKey, weekdayOf, fmtMin, fmtCN } from '../core/util.js';
 import { openModal, formDlg, actionSheet, confirmDlg, queueSettle, toast } from '../core/fx.js';
 import * as sound from '../core/sound.js';
+import { routeTabs } from '../ui/tabs.js';
+import { petEmptyState } from '../ui/empty.js';
 
 export async function renderPlan(view, ctx) {
   const requested = ctx.routeParams?.get('tab');
@@ -14,11 +16,15 @@ export async function renderPlan(view, ctx) {
   if (requested && legacy[requested]) history.replaceState(null,'','#/plan?tab='+tab);
   view.replaceChildren();
   view.dataset.planTab = tab;
-  const select=h('select',{class:'input plan-view-select','aria-label':'计划内容'},
-    [['tasks','任务'],['habits','习惯'],['goals','目标'],['insp','生活灵感']].map(([value,label])=>h('option',{value,selected:tab===value},label)));
-  select.addEventListener('change',()=>{location.hash='#/plan?tab='+select.value;});
-  view.append(h('section',{class:'plan-view-head'},
-    h('div',null,h('b',null,'计划'),h('span',null,'安排接下来要做的事')),h('label',null,h('span',null,'查看'),select)));
+  view.append(routeTabs({
+    value:tab, ariaLabel:'计划分类', className:'plan-route-tabs',
+    items:[
+      {id:'tasks',label:'任务',href:'plan?tab=tasks'},
+      {id:'habits',label:'习惯',href:'plan?tab=habits'},
+      {id:'goals',label:'目标',href:'plan?tab=goals'},
+      {id:'insp',label:'生活灵感',href:'plan?tab=insp'},
+    ],
+  }));
   const box = h('div', { class: 'plan-content' });
   view.append(box);
   if (tab === 'tasks') await renderTasks(box, ctx);
@@ -46,18 +52,19 @@ async function renderTasks(box, ctx) {
       h('div',null,h('b',{class:'num'},String(completed.length)),h('span',null,'最近完成'))));
   box.append(head);
 
-  const section = (title, list, note='') => {
+  const section = async (title, list, note='') => {
     const card = h('section',{class:'card plan-task-section'},h('div',{class:'card-title'},title,note?h('span',{class:'tag'},note):null));
-    if (!list.length && title==='今天') {
-      import('../ui/empty.js').then(async ({petEmptyState})=>card.append(await petEmptyState('tasks',{compact:true,actionLabel:'新建任务',onAction:async()=>{const {taskDialog}=await import('./today.js');taskDialog();}})));
-    } else if(!list.length) card.append(h('div',{class:'row-sub'},'暂时没有内容。'));
+    if (!list.length) {
+      const kind = title==='今天' ? 'tasks' : title==='接下来' ? 'tasksUpcoming' : 'generic';
+      card.append(await petEmptyState(kind,{compact:true,actionLabel:title==='今天'?'新建任务':'',onAction:title==='今天'?async()=>{const {taskDialog}=await import('./today.js');taskDialog();}:null}));
+    }
     for (const task of list) card.append(planTaskRow(task, ctx));
     box.append(card);
   };
-  if (overdue.length) section('待处理', overdue, '之前未完成');
-  section('今天', todayRows);
-  section('接下来', upcoming.slice(0,30));
-  if (completed.length) section('最近完成', completed);
+  if (overdue.length) await section('待处理', overdue, '之前未完成');
+  await section('今天', todayRows);
+  await section('接下来', upcoming.slice(0,30));
+  if (completed.length) await section('最近完成', completed);
 }
 
 function planTaskRow(task, ctx) {
@@ -96,7 +103,7 @@ async function renderGoals(box, ctx) {
   const card = h('div', { class: 'card' },
     h('div', { class: 'card-title' }, icon('flag'), '目标',
       h('button', { class: 'more', onclick: () => goalDialog() }, icon('plus'), '新建')));
-  if (!goals.length) { const {petEmptyState}=await import('../ui/empty.js'); card.append(await petEmptyState('generic',{compact:true,actionLabel:'新建目标',onAction:()=>goalDialog()})); }
+  if (!goals.length) { card.append(await petEmptyState('goals',{compact:true,actionLabel:'新建目标',onAction:()=>goalDialog()})); }
   for (const g of goals) {
     const msTotal = (g.milestones || []).length;
     const msDone = (g.milestones || []).filter((m) => m.done).length;
@@ -140,7 +147,7 @@ async function renderGoals(box, ctx) {
         const v = await formDlg({ title: '许个愿望', fields: [{ key: 't', label: '想做成什么？', type: 'text', placeholder: '例如：学会做十道菜' }] });
         if (v && v.t.trim()) { await put('wishes', { id: uid('w'), title: v.t.trim(), note: '', createdAt: Date.now() }); ctx.rerender(); }
       } }, icon('plus'), '许愿')));
-  if (!wishes.length) { const {petEmptyState}=await import('../ui/empty.js'); wishCard.append(await petEmptyState('generic',{compact:true,actionLabel:'许个愿望',onAction:async()=>{const v=await formDlg({title:'许个愿望',fields:[{key:'t',label:'想做成什么？',type:'text',placeholder:'例如：学会做十道菜'}]});if(v?.t?.trim()){await put('wishes',{id:uid('w'),title:v.t.trim(),note:'',createdAt:Date.now()});ctx.rerender('plan?tab=goals');}}})); }
+  if (!wishes.length) { wishCard.append(await petEmptyState('wishes',{compact:true,actionLabel:'许个愿望',onAction:async()=>{const v=await formDlg({title:'许个愿望',fields:[{key:'t',label:'想做成什么？',type:'text',placeholder:'例如：学会做十道菜'}]});if(v?.t?.trim()){await put('wishes',{id:uid('w'),title:v.t.trim(),note:'',createdAt:Date.now()});ctx.rerender('plan?tab=goals');}}})); }
   for (const w of wishes) {
     wishCard.append(h('div', { class: 'row-item' },
       h('div', { class: 'row-main' }, h('div', { class: 'row-title' }, w.title)),
@@ -227,8 +234,8 @@ async function renderHabits(box, ctx) {
   const card = h('div', { class: 'card' },
     h('div', { class: 'card-title' }, icon('task'), '习惯',
       h('button', { class: 'more', onclick: () => habitDialog() }, icon('plus'), '新建')),
-    h('div', { class: 'form-hint', style: 'margin-bottom:6px' }, '默认统计累计达成，不使用连续天数，不惩罚断签'));
-  if (!habits.length) { const {petEmptyState}=await import('../ui/empty.js'); card.append(await petEmptyState('habits',{compact:true,actionLabel:'创建习惯',onAction:()=>habitDialog()})); }
+    h('div', { class: 'form-hint', style: 'margin-bottom:6px' }, '按自己的节奏累计完成，不用担心中断。'));
+  if (!habits.length) { card.append(await petEmptyState('habits',{compact:true,actionLabel:'创建习惯',onAction:()=>habitDialog()})); }
   // 近14天打卡
   const recentLogs = await all('habit_logs');
   const byHabit = new Map();
@@ -438,7 +445,7 @@ function renderInsp(box, ctx) {
     const insp = await loadKV('inspiration');
     favBox.innerHTML = '';
     const card = h('div', { class: 'card' }, h('div', { class: 'card-title' }, icon('star'), '收藏的灵感'));
-    if (!insp.favorites.length) card.append(h('div', { class: 'empty' }, '收藏喜欢的灵感，随时来做'));
+    if (!insp.favorites.length) card.append(await petEmptyState('inspiration',{compact:true}));
     for (const t of insp.favorites) {
       const item = INSPIRATIONS.find((x) => x.t === t);
       card.append(h('div', { class: 'row-item' },

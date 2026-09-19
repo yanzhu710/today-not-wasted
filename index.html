@@ -39,7 +39,7 @@
     if (done) return;
     clearTimeout(timer); box.hidden = false;
     label.textContent = '打开暂时没有完成';
-    detail.textContent = stage + '：' + (error && error.message ? error.message : String(error || '未知错误')) + '\n已保存的本机记录不会被清空。可以重试，或把这段错误信息发给开发者。';
+    detail.textContent = stage + '：' + (error && error.message ? error.message : String(error || '未知错误')) + '\n已保存的本机记录不会被清空。可以先重新打开；如果仍未恢复，再检查程序更新。';
     actions.hidden = false;
   }
   window.__tjmbgBoot = {
@@ -65,7 +65,7 @@
           worker.addEventListener('statechange',check);check();
         });
       }
-      if (!reg.waiting) { detail.textContent = '没有已就绪的新版。请联网重试，或将上面的错误反馈给开发者。不要删除网站数据。'; return; }
+      if (!reg.waiting) { detail.textContent = '暂时没有可切换的新版。请保持联网后再试一次；不需要删除网站数据。'; return; }
       await new Promise(function(resolve,reject){
         var timeout=setTimeout(function(){navigator.serviceWorker.removeEventListener('controllerchange',change);reject(new Error('切换尚未完成，请稍后重试。'));},15000);
         function change(){clearTimeout(timeout);resolve();location.reload();}
