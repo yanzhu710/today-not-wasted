@@ -1,13 +1,13 @@
 // 今天没白过 · 「家园」页：家园场景 / 商城 / 背包 / 徽章收藏册与展示栏
-import { all, get, put, del, loadKV, saveKV, patchKV } from '../core/db.js';
-import { PETS, SHOP, SHOP_CATS, BADGES, BADGE_SERIES, badgeById, badgeRarity, stageOf, STAGES, shopById, isUnlocked, unlockText, POINTS } from '../core/catalog.js';
-import { purchaseItem, redeemCustomReward, useConsumable, usePetItem, equipItem, petInteract, claimPet, savePetName, setActivePet, balance, stats, getActivePet, grantGrowth } from '../core/engine.js';
+import { all, allByIndex, get, put, del, loadKV, saveKV, patchKV } from '../core/db.js';
+import { PETS, SHOP, SHOP_CATS, BADGES, BADGE_SERIES, badgeById, badgeRarity, stageOf, stageProgress, STAGES, PRIMARY_PET_ID, CROWN_ITEM_ID, COMPANION_CONFIG, shopById, isUnlocked, unlockText, POINTS } from '../core/catalog.js';
+import { purchaseItem, redeemCustomReward, usePetItem, petInteract, claimPetWithInvite, savePetName, setActivePet, coronateActivePet, balance, stats, getActivePet } from '../core/engine.js';
 import { shopArt, badgeArt, setBadgeIndex } from '../core/art.js';
-import { renderHomeScene, petNode, petAct, floatFx, petSVG, HOME_SLOTS } from '../core/pets.js';
 import { h, icon, fmtMin, todayKey, fmtCN, uid } from '../core/util.js';
 import { openModal, actionSheet, confirmDlg, formDlg, queueSettle, toast, burstAt, sparkleAt, pulse } from '../core/fx.js';
 import * as sound from '../core/sound.js';
 import { routeTabs } from '../ui/tabs.js';
+import { companionDisplayName, companionStage, companionStatus, coronationReady, companionMemories, syncCompanionMemories } from '../core/companion.js';
 
 let shopCat = 'food';
 let badgeFilter = { series: null, got: null };
@@ -156,123 +156,161 @@ function playBadgeTapFx(anchor, got, points = 10) {
 
 // ---- 家园 ----
 async function renderHomeTab(box, ctx) {
-  const [pets, appMeta, unlocked, inventory, petLogs] = await Promise.all([all('pets'),loadKV('app_meta'),all('badges'),all('inventory'),all('petlog')]);
-  if(!pets.length){box.append(h('div',{class:'card'},h('p',{class:'paper-empty'},'还没有伙伴，先完成初始伙伴选择吧。')));return;}
-  const active=pets.find(p=>p.petId===appMeta.activePet)||pets[0];
-  const def=PETS.find(p=>p.petId===active.petId)||PETS[0];
-  const S=stats()||{}, progress=stageProgressOf(active.growth||0);
-  const { petFigure,petResponse } = await import('../ui/paper.js');
-  box.classList.add('paper-companion','paper-reference-companion');
-  const go=(tab,sub=null)=>ctx.navigate(tab,sub);
+  const [pets, appMeta, unlocked, inventory, petLogs] = await Promise.all([all('pets'),loadKV('app_meta'),all('badges'),all('inventory'),allByIndex('petlog','dateKey',todayKey())]);
+  const active=pets.find(p=>p.petId===appMeta.activePet)||pets.find(p=>p.petId===PRIMARY_PET_ID)||pets[0];
+  if(!active){box.append(h('p',{class:'paper-empty'},'伙伴正在准备中，请重新打开一次。'));return;}
+  const { petFigure,petResponse }=await import('../ui/paper.js');
+  await syncCompanionMemories(active);
+  const memories=await companionMemories(active.petId);
+  const stage=companionStage(active), progress=stageProgress(active.growth||0,!!active.coronationAt), status=companionStatus(active);
+  const togetherDays=Math.max(1,Math.floor((Date.now()-(Number(active.ownedAt)||Date.now()))/86400000)+1);
+  const mode=appMeta.companionView==='cards'?'cards':'form';
+  const todayLogs=petLogs.filter(l=>l.dateKey===todayKey()&&l.interaction&&Number(l.amount)>0);
+  const totalRewarded=todayLogs.length,totalCap=Object.values(COMPANION_CONFIG.interactionDailyCaps).reduce((a,b)=>a+b,0);
+  box.classList.add('companion-v25');
 
-  const tabs=h('div',{class:'ref-pet-switcher','aria-label':'选择伙伴'});
-  for(const item of PETS){const owned=pets.some(p=>p.petId===item.petId);tabs.append(h('button',{
-    class:'ref-pet-chip'+(item.petId===active.petId?' on':''),'aria-pressed':String(item.petId===active.petId),onclick:async()=>{
-      if(owned){await setActivePet(item.petId);await ctx.rerender();return;}
-      if(item.unlock?.badges&&(S.badgeCount||0)<item.unlock.badges){toast(item.unlockText,{ic:'badge'});return;}
-      if(item.unlock?.stage&&(S.petMaxStage||1)<item.unlock.stage){toast(item.unlockText,{ic:'pet'});return;}
-      const result=await claimPet(item.petId);if(result.err){toast(result.err,{ic:'error'});return;}
-      queueSettle([{ic:'pet',label:`新伙伴 ${item.name} 加入了`,sub:item.species}]);await ctx.rerender();
-    }},petFigure({petId:item.petId,name:item.name}),h('span',null,item.name),owned?null:h('small',null,'待解锁')));}
-  box.append(tabs);
+  async function renamePet(force=false){
+    const v=await formDlg({title:force?'给你的伙伴起个名字':'给伙伴改名',submitLabel:'保存',fields:[{key:'n',label:'名字',type:'text',value:active.name||'',placeholder:'1–12 个字',required:true}]});
+    if(!v?.n?.trim()){if(force)setTimeout(()=>renamePet(true),250);return;}
+    await savePetName(active,v.n);await patchKV('profile',{petName:v.n.trim().slice(0,12)});toast('名字记住啦',{ic:'heart'});ctx.rerender('home?tab=home');
+  }
+  // v2.5.0：老用户迁移后如果没有自定义过伙伴名，第一次打开伙伴页也必须完成命名。
+  if(!String(active.name||'').trim()&&!window.__tjmbgCompanionNamePrompted){
+    window.__tjmbgCompanionNamePrompted=true;
+    setTimeout(()=>renamePet(true),180);
+  }
 
-  const bubble=h('p',{class:'ref-room-bubble','aria-live':'polite'},'今天天气真好！一起玩吧？ ♡');
-  const scene=h('section',{class:'ref-room card','aria-label':(active.name||def.name)+'的陪伴场景'});
-  const background=h('img',{class:'ref-room-bg',src:'./assets/ui/quiet-room.webp',alt:'',decoding:'async',draggable:'false'});
-  background.addEventListener('error',()=>{background.hidden=true;scene.classList.add('asset-fallback');});
-  let figure, actionBusy=false, actionButtons=[];
-  figure=petFigure(active,{interactive:true,onDispose:ctx.onDispose,onClick:()=>runInteraction('touch')});
-  scene.append(background,
-    h('span',{class:'ref-room-plant plant-left','aria-hidden':'true'}),h('span',{class:'ref-room-plant plant-right','aria-hidden':'true'}),
-    h('div',{class:'ref-room-chalk'},'小日子',h('br'),'慢慢过 ♡'),
-    h('div',{class:'ref-room-bed','aria-hidden':'true'},h('span',null)),
-    h('div',{class:'ref-room-ball','aria-hidden':'true'}),
-    h('div',{class:'ref-room-pet'},figure),bubble);
+  const identity=h('section',{class:'companion-identity'},
+    h('div',{class:'companion-name-block'},h('span',{class:'companion-kicker'},'MY COMPANION'),
+      h('div',{class:'companion-name-line'},h('h1',null,companionDisplayName(active)),h('button',{class:'companion-inline-btn','aria-label':'改名',onclick:()=>renamePet(false)},icon('edit'))),
+      h('p',null,`Lv.${stage.n} ${stage.name} · 已陪伴 ${togetherDays} 天`)),
+    h('div',{class:'companion-head-actions'},
+      h('button',{class:'iconbtn','aria-label':'伙伴资料',onclick:()=>openCompanionProfile(active,togetherDays,memories)},icon('book')),
+      h('button',{class:'iconbtn','aria-label':'切换伙伴',onclick:()=>openPartnerBook(pets,active,ctx)},icon('pet'))));
+  const modeSwitch=h('div',{class:'companion-view-switch','aria-label':'伙伴展示方式'},
+    h('button',{class:mode==='form'?'on':'',onclick:async()=>{if(mode==='form')return;await patchKV('app_meta',{companionView:'form'});ctx.rerender('home?tab=home');}},'形态'),
+    h('button',{class:mode==='cards'?'on':'',onclick:async()=>{if(mode==='cards')return;await patchKV('app_meta',{companionView:'cards'});ctx.rerender('home?tab=home');}},'闪卡'));
+  box.append(identity,modeSwitch);
+
+  if(mode==='cards'){
+    const {renderFlashcards}=await import('../ui/flashcards.js');
+    box.append(renderFlashcards(active,{onDispose:ctx.onDispose}));
+    box.append(h('p',{class:'paper-page-note'},'闪卡会随着成长阶段逐张解锁。Lv.4 需要完成加冕仪式。'));
+    return;
+  }
+
+  const bubble=h('p',{class:'companion-scene-bubble','aria-live':'polite'},status.text);
+  let figure;
+  const restAction=status.id==='困困'?'sleep':status.id==='开心'?'happy':'idle';
+  figure=petFigure(active,{interactive:true,action:restAction,onDispose:ctx.onDispose,onClick:()=>runInteraction('touch')});
+  const scene=h('section',{class:`companion-scene stage-${stage.n}`},
+    h('span',{class:'companion-scene-sun','aria-hidden':'true'}),h('span',{class:'companion-scene-leaf leaf-a','aria-hidden':'true'}),h('span',{class:'companion-scene-leaf leaf-b','aria-hidden':'true'}),
+    h('div',{class:'companion-scene-pet'},figure),bubble,
+    h('span',{class:'companion-status-chip'},'今日状态 · '+status.id));
   box.append(scene);
 
-  async function rename(){
-    const values=await formDlg({title:'给伙伴起名 / 改名',fields:[{key:'n',label:'名字（12字内）',type:'text',value:active.name||def.name}]});
-    if(values?.n?.trim()){await savePetName(active,values.n);toast('已保存');await ctx.rerender();}
-  }
-  const ownedAt=Number(active.ownedAt)||Date.now();
-  const togetherDays=Math.max(1,Math.floor((Date.now()-ownedAt)/86400000)+1);
-  const realLifeLogs=petLogs.filter(row=>row && row.exempt!==true).length;
-  const stateCard=h('section',{class:'card ref-pet-status'},
-    h('div',{class:'ref-pet-identity'},h('div',null,h('h1',null,active.name||def.name,h('button',{class:'ref-inline-edit','aria-label':'给伙伴改名',onclick:rename},icon('edit'))),h('p',null,`陪伴了 ${togetherDays} 天`),h('small',null,'🌱 每一天，都在慢慢变好！'))),
-    h('div',{class:'ref-pet-metrics'},
-      petMetric('heart','陪伴',`${togetherDays}天`),
-      petMetric('star','阶段',progress.cur.name),
-      petMetric('pet','成长值',active.growth||0),
-      petMetric('badge','徽章',unlocked.length)));
-  box.append(stateCard);
+  const growthCard=h('section',{class:'companion-growth-panel'},
+    h('div',{class:'companion-growth-top'},
+      h('div',null,h('span',{class:'companion-kicker'},'TOGETHER'),h('b',null,`陪伴值 ${Number(active.growth)||0}`),
+        h('small',null,progress.coronationReady?'条件已达成，等待完成加冕':progress.next?`距离 Lv.${progress.next.n} 还差 ${progress.remain}`:'纪念期已解锁')),
+      h('span',{class:'companion-stage-pill'},`Lv.${stage.n} ${stage.name}`)),
+    h('progress',{class:'paper-progress',value:progress.next?Math.max(0,Math.min(1,progress.ratio)):1,max:'1','aria-label':'陪伴值进度'}),
+    h('ol',{class:'companion-stage-track'},STAGES.map(st=>h('li',{class:(st.n<=stage.n?'reached ':'')+(st.n===4&&progress.coronationReady&&!active.coronationAt?'ready':'')},
+      h('span',null,st.n===4?'♛':'♡'),h('b',null,`Lv.${st.n}`),h('small',null,st.name)))));
+  box.append(growthCard);
 
-  const actionDefs=[['touch','摸摸','heart'],['feed','喂食','gift'],['encourage','鼓励','star'],['play','玩耍','pet']];
-  const actions=h('div',{class:'ref-pet-actions'});
-  for(const [kind,label,ic] of actionDefs){const button=h('button',{class:'ref-pet-action action-'+kind,onclick:()=>runInteraction(kind)},
-    h('span',{class:'ref-pet-action-art','aria-hidden':'true'},icon(ic)),h('b',null,label));actionButtons.push(button);actions.append(button);}
-  box.append(actions);
+  const interactions=h('section',{class:'companion-interactions'},
+    h('div',{class:'companion-section-head'},h('div',null,h('h2',null,'和它待一会儿'),h('p',null,`今天已有 ${totalRewarded}/${totalCap} 次互动带来陪伴值；达到上限后仍然可以继续玩。`))),
+    h('div',{class:'companion-action-grid'}));
+  const actionGrid=interactions.lastElementChild;
+  const defs=[['touch','摸摸','heart'],['feed','喂食','gift'],['play','玩耍','pet'],['encourage','鼓励','star']];
+  let busy=false;const buttons=[],buttonByKind=new Map();
+  defs.forEach(([kind,label,ic])=>{const cap=COMPANION_CONFIG.interactionDailyCaps[kind]||0,count=todayLogs.filter(l=>l.interaction===kind).length;const b=h('button',{class:'companion-action action-'+kind,onclick:()=>runInteraction(kind)},h('span',null,icon(ic)),h('b',null,label),h('small',null,count>=cap?'今天的陪伴值已收满':`${Math.min(count,cap)}/${cap} 次有陪伴值`));buttons.push(b);buttonByKind.set(kind,b);actionGrid.append(b);});
+  box.append(interactions);
 
   async function runInteraction(kind){
-    if(actionBusy||!figure.isConnected)return;actionBusy=true;actionButtons.forEach(button=>button.disabled=true);figure.disabled=true;
+    if(busy)return;busy=true;buttons.forEach(b=>b.disabled=true);figure.disabled=true;
     try{
-      let text='',motion='touch';
+      let result=null,item=null;
       if(kind==='feed'||kind==='play'){
-        const category=kind==='feed'?'food':'toy';
-        const available=(await all('inventory')).some(row=>row.qty>0&&shopById(row.itemId)?.cat===category);
-        if(!available){const agreed=await confirmDlg('背包里还没有'+(category==='food'?'食物':'玩具'),'可以去商城看看，用已有积分兑换。',{okLabel:'去商城'});if(agreed)go('rewards','shop');return;}
-        const { choosePetItem }=await import('../core/item-picker.js');const result=await choosePetItem(category);if(!result?.ok)return;
-        text=kind==='feed'?`吃到了${result.item.name}，谢谢你。`:`一起玩${result.item.name}吧。`;motion=kind==='feed'?'eat':'play';
-      }else{
-        await petInteract({touch:true});text=kind==='encourage'?'收到你的加油啦，也给你一份。':'蹭蹭你，我在呢。';motion=kind==='encourage'?'happy':'touch';
-      }
-      sound.play('pet');petResponse(figure,bubble,text,motion);toast(text,{ic:'heart'});if(kind==='feed'||kind==='play')await refreshProps();
-    }catch(error){console.error(error);toast(error.message||'这次操作未完成，请重试',{ic:'error'});}
-    finally{actionBusy=false;actionButtons.forEach(button=>button.disabled=false);figure.disabled=false;}
+        const cat=kind==='feed'?'food':'toy';
+        const available=inventory.some(row=>row.qty>0&&shopById(row.itemId)?.cat===cat);
+        if(!available){const go=await confirmDlg(cat==='food'?'还没有可以喂的食物':'还没有可以玩的玩具','去商城挑一个喜欢的，再回来互动吧。',{okLabel:'去商城'});if(go)ctx.navigate('rewards','shop');return;}
+        const {choosePetItem}=await import('../core/item-picker.js');result=await choosePetItem(cat);if(!result?.ok)return;item=result.item;
+      }else result=await petInteract({kind,touch:kind==='touch'});
+      const lines={touch:'蹭蹭你，我在呢。',feed:item?`吃到了${item.name}，好满足。`:'吃饱啦。',play:item?`和你一起玩${item.name}最开心了。`:'一起玩一会儿吧。',encourage:'你已经很努力了，今天也要对自己好一点。'};
+      petResponse(figure,bubble,lines[kind],kind);
+      pulse(figure);
+      const fxColors={touch:['#E8A0B4','#F5D7DE','#FFF4E8'],feed:['#E7B65A','#F2D98C','#F9E8C3'],play:['#7FA989','#B7CFB0','#F4E8B4'],encourage:['#D8A94D','#F2D98C','#FFF6DF']}[kind];
+      sparkleAt(buttonByKind.get(kind)||figure,{colors:fxColors,count:7,radius:34});
+      try { navigator.vibrate?.(kind==='play'?[18,26,18]:18); } catch {}
+      if(result?.discovered){const found=result.discovered.type==='food'?shopById(result.discovered.itemId)?.name:result.discovered.type==='toy'?shopById(result.discovered.itemId)?.name:'摸摸';toast(`✨ 好像发现了它很喜欢「${found||'这个'}」`,{ic:'heart',ms:3200});}
+      else if(result?.growth>0) toast(`陪伴值 +${result.growth}`,{ic:'heart'});
+      else if(result?.capped) toast('今天的陪伴已经很满啦，继续互动也一样会回应你。',{ic:'heart',ms:2800});
+      sound.play('pet');setTimeout(()=>ctx.rerender('home?tab=home'),1550);
+    }catch(error){console.error(error);toast(error.message||'这次互动没有完成',{ic:'error'});}
+    finally{busy=false;buttons.forEach(b=>b.disabled=false);figure.disabled=false;}
   }
 
-  const growth=h('section',{class:'card ref-growth-card'},
-    h('div',{class:'ref-card-head'},h('h2',null,'🌱 TA在慢慢长大'),h('div',{class:'ref-growth-note'},'再多一些陪伴，',h('br'),'就能解锁下一个阶段啦！')),
-    h('ol',{class:'ref-growth-track'},STAGES.map(st=>h('li',{class:st.n<=progress.cur.n?'reached':''},h('span',null,icon('pet')),h('b',null,st.name)))));
-  box.append(growth);
-
-  const gotMap=new Map(unlocked.map(row=>[row.badgeId,row]));
-  const showcase=await loadKV('showcase');
-  const chosen=Array.isArray(showcase)?showcase.filter(id=>gotMap.has(id)&&badgeById(id)):[];
-  const recent=[...unlocked].sort((a,b)=>(Number(b.ts)||0)-(Number(a.ts)||0)).map(row=>row.badgeId).filter(id=>badgeById(id));
-  const ids=[...new Set([...chosen,...recent])].slice(0,3);
-  const badgeCard=h('section',{class:'card ref-memory-card ref-badges-card'},h('div',{class:'ref-card-head'},h('h2',null,'⭐ 纪念徽章'),h('button',{class:'more',onclick:()=>go('badges')},`已获得 ${unlocked.length}`,icon('right'))));
-  const badgeGrid=h('div',{class:'ref-memory-badges'});
-  for(const id of ids){const b=badgeById(id),got=gotMap.get(id);badgeGrid.append(h('button',{onclick:e=>{playBadgeTapFx(e.currentTarget,true,b.points);badgeDetail(b,got,e.currentTarget);}},h('img',{src:badgeArt(id),alt:b.name,loading:'lazy'}),h('b',null,b.name),h('small',null,got?.ts?fmtCN(new Date(got.ts).toISOString().slice(0,10)):'')));}
-  if(!ids.length){const {petEmptyState}=await import('../ui/empty.js');badgeGrid.append(await petEmptyState('badges',{compact:true,actionLabel:'去记录',onAction:()=>{location.hash='#/today';}}));}
-  badgeCard.append(badgeGrid);
-
-  const memoryCard=h('section',{class:'card ref-memory-card'},h('div',{class:'ref-card-head'},h('h2',null,'▣ 我们的回忆'),h('button',{class:'more',onclick:()=>{location.hash='#/footprint';}},icon('right'))),
-    h('div',{class:'ref-polaroid'},h('div',{class:'ref-polaroid-pet'},petFigure(active)),h('small',null,`已经一起走过 ${togetherDays} 天`),h('b',null,realLifeLogs?`留下 ${realLifeLogs} 次成长记录`:'第一段回忆，等你来写')));
-  box.append(h('div',{class:'ref-memory-grid'},badgeCard,memoryCard));
-
-  const props=h('section',{class:'card ref-props'},h('div',{class:'ref-card-head'},h('h2',null,'👜 小道具'),h('button',{class:'more',onclick:()=>go('rewards','owned')},'背包',icon('right'))),h('p',{class:'ref-props-sub'},'这些小物件能让相处更有趣～'));
-  const propsList=h('div',{class:'ref-prop-list'});props.append(propsList);box.append(props,h('p',{class:'paper-page-note'},'几天不见也没关系，成长和收藏都还在。'));
-  async function refreshProps(){
-    const rows=(await all('inventory')).filter(row=>row.qty>0&&['food','toy'].includes(shopById(row.itemId)?.cat)).slice(0,3);propsList.replaceChildren();
-    if(!rows.length){const {petEmptyState}=await import('../ui/empty.js');propsList.append(await petEmptyState('bag',{compact:true,actionLabel:'去商城',onAction:()=>go('rewards','shop')}));return;}
-    for(const row of rows){const item=shopById(row.itemId);propsList.append(h('button',{class:'ref-prop',onclick:()=>go('rewards','owned')},h('img',{src:shopArt(item.id),alt:'',loading:'lazy'}),h('span',null,item.name),h('small',null,item.type==='consumable'?`×${row.qty}`:'永久')));}
+  const crownInv=inventory.find(row=>row.itemId===CROWN_ITEM_ID&&row.qty>0);
+  if(stage.n===4){
+    box.append(h('section',{class:'companion-crown crowned'},h('span',{class:'crown-symbol'},'♛'),h('div',null,h('b',null,'纪念期 · 已完成加冕'),h('p',null,`这次成长仪式完成于 ${fmtCN(new Date(active.coronationAt).toISOString().slice(0,10))}。Lv.4 闪卡已经解锁。`)),h('button',{class:'btn btn-soft btn-sm',onclick:async()=>{await patchKV('app_meta',{companionView:'cards'});ctx.rerender('home?tab=home');}},'查看纪念闪卡')));
+  }else if(coronationReady(active)){
+    box.append(h('section',{class:'companion-crown ready'},h('span',{class:'crown-symbol'},'♛'),h('div',null,h('b',null,'已经达到加冕条件'),h('p',null,crownInv?'加冕果实已经准备好了。完成仪式后会进入 Lv.4 纪念期。':'去商城兑换一颗加冕果实，再回来完成最后的成长仪式。')),
+      crownInv?h('button',{class:'btn btn-primary btn-sm',onclick:async()=>{if(!(await confirmDlg('完成加冕仪式？','会消耗 1 颗加冕果实，并永久解锁 Lv.4 纪念期与最终闪卡。',{okLabel:'开始加冕'})))return;const r=await coronateActivePet();if(r?.err){toast(r.err,{ic:'error'});return;}petResponse(figure,bubble,'从今天开始，我们又多了一段值得珍藏的故事。','celebrate');toast('加冕完成 · Lv.4 纪念期已解锁',{ic:'badge',ms:3600});setTimeout(()=>ctx.rerender('home?tab=home'),2200);}},'喂食加冕果实'):h('button',{class:'btn btn-primary btn-sm',onclick:()=>{shopCat='growth';ctx.navigate('rewards','shop');}},'去商城兑换')));
   }
-  await refreshProps();
-  function petMetric(ic,label,value){return h('div',{class:'ref-pet-metric'},h('span',null,icon(ic)),h('b',null,label),h('small',null,String(value)));}
+
+  const prefs=active.preferences||{food:[],toy:[],interaction:[]};
+  const discovered=[...prefs.food.map(id=>['食物',shopById(id)?.name||id]),...prefs.toy.map(id=>['玩具',shopById(id)?.name||id]),...prefs.interaction.map(id=>['互动',id==='touch'?'摸摸':id])];
+  box.append(h('section',{class:'companion-discovery'},
+    h('div',{class:'companion-section-head'},h('div',null,h('h2',null,'慢慢发现它的喜好'),h('p',null,'不是一开始就知道答案，互动久了才会慢慢发现。'))),
+    discovered.length?h('div',{class:'companion-pref-list'},discovered.map(([type,name])=>h('span',{class:'companion-pref-chip'},h('small',null,type),h('b',null,name)))):h('p',{class:'companion-soft-empty'},'目前还是秘密。试试不同的食物、玩具和互动方式。')));
+
+  const memorySection=h('section',{class:'companion-memories'},
+    h('div',{class:'companion-section-head'},h('div',null,h('h2',null,'我们的回忆'),h('p',null,`已经留下 ${memories.length} 个共同节点。`)),h('button',{class:'paper-text-link',onclick:()=>openMemories(memories)},'全部',icon('right'))),
+    h('div',{class:'companion-memory-strip'}));
+  const strip=memorySection.lastElementChild;
+  memories.slice(-4).reverse().forEach(m=>strip.append(h('button',{class:'companion-memory-card',onclick:()=>openMemories(memories,m.id)},h('span',null,m.dateKey||''),h('b',null,m.title),h('small',null,m.note||''))));
+  if(!memories.length)strip.append(h('p',{class:'companion-soft-empty'},'第一段回忆已经开始，继续一起生活就会慢慢变多。'));
+  box.append(memorySection,h('p',{class:'paper-page-note'},'几天不见也没关系。陪伴值不会因为离开而下降，它会在这里等你。'));
 }
 
-function stageProgressOf(g) {
-  const cur = stageOf(g);
-  const next = STAGES.find((s) => s.n === cur.n + 1) || null;
-  return { cur, next, ratio: next ? (g - cur.min) / (next.min - cur.min) : 1 };
+async function openPartnerBook(pets,active,ctx){
+  const items=PETS.map(def=>{const owned=pets.find(p=>p.petId===def.petId);if(owned)return {ic:def.petId===active.petId?'check':'pet',label:(owned.name||'未命名伙伴')+(def.petId===active.petId?' · 当前':''),sub:def.species,onClick:async()=>{if(def.petId!==active.petId){await setActivePet(def.petId);ctx.rerender('home?tab=home');}}};return {ic:'lock',label:'新伙伴 · 尚未解锁',sub:'有邀请号时可以在这里解锁',onClick:()=>invitePartner(def,ctx)};});
+  await actionSheet('伙伴册',items);
 }
+async function invitePartner(def,ctx){
+  const v=await formDlg({title:'该伙伴尚未解锁',submitLabel:'立即解锁',fields:[{key:'code',label:'邀请号',type:'text',placeholder:'请输入邀请号',required:true}]});
+  if(!v?.code)return;const r=await claimPetWithInvite(def.petId,v.code);if(r?.err){toast(r.err,{ic:'error',ms:3000});return;}
+  const named=await formDlg({title:'给新伙伴起个名字',submitLabel:'记住',fields:[{key:'name',label:'名字',type:'text',placeholder:'1–12 个字',required:true}]});
+  if(named?.name?.trim()) await savePetName(r.pet,named.name.trim());
+  toast('新伙伴已经加入',{ic:'pet'});ctx.rerender('home?tab=home');
+}
+function preferenceText(pet,type){
+  const rows=pet.preferences?.[type]||[];if(!rows.length)return '还在慢慢发现';
+  if(type==='interaction')return rows.map(v=>v==='touch'?'摸摸':v).join('、');
+  return rows.map(id=>shopById(id)?.name||id).join('、');
+}
+function openCompanionProfile(pet,togetherDays,memories){
+  const st=companionStage(pet),status=companionStatus(pet);
+  openModal({title:(pet.name||'伙伴')+'的资料',content:h('div',{class:'companion-profile-sheet'},
+    h('div',{class:'companion-profile-hero'},h('img',{src:`./assets/pets/ali/ali_lv${st.n}_idle.png`,alt:'',draggable:'false'}),h('div',null,h('b',null,pet.name||'你的伙伴'),h('span',null,`Lv.${st.n} ${st.name}`),h('small',null,`陪伴值 ${pet.growth||0}`))),
+    h('dl',null,h('div',null,h('dt',null,'相遇日'),h('dd',null,fmtCN(new Date(pet.ownedAt||Date.now()).toISOString().slice(0,10)))),h('div',null,h('dt',null,'陪伴天数'),h('dd',null,`${togetherDays} 天`)),h('div',null,h('dt',null,'今日状态'),h('dd',null,status.id)),h('div',null,h('dt',null,'喜欢的食物'),h('dd',null,preferenceText(pet,'food'))),h('div',null,h('dt',null,'喜欢的玩具'),h('dd',null,preferenceText(pet,'toy'))),h('div',null,h('dt',null,'喜欢的互动'),h('dd',null,preferenceText(pet,'interaction'))),h('div',null,h('dt',null,'共同回忆'),h('dd',null,`${memories.length} 个`)))),actions:[{label:'关闭',onClick:c=>c()}]});
+}
+function openMemories(memories,focusId=null){
+  const list=h('div',{class:'companion-memory-list'});
+  [...memories].reverse().forEach(m=>list.append(h('article',{class:'companion-memory-row'+(m.id===focusId?' focus':'')},h('span',{class:'companion-memory-dot'}),h('div',null,h('time',null,m.dateKey||''),h('b',null,m.title),h('p',null,m.note||'')))));
+  openModal({title:'我们的回忆',content:list,actions:[{label:'关闭',onClick:c=>c()}]});
+}
+
+function stageProgressOf(g,crowned=false){ return stageProgress(g,crowned); }
 
 // ---- 商城 ----
 async function renderShop(box, ctx) {
   const S = stats() || {};
-  const [inv, pets] = await Promise.all([all('inventory'), all('pets')]);
+  const [inv, pets, activePet] = await Promise.all([all('inventory'), all('pets'), getActivePet()]);
   const invMap = new Map(inv.map((i) => [i.itemId, i]));
-  const ctxUn = { maxStage: S.petMaxStage || 1, badgeCount: S.badgeCount || 0, seriesComplete: S.seriesComplete || 0 };
+  const ctxUn = { maxStage: S.petMaxStage || 1, badgeCount: S.badgeCount || 0, seriesComplete: S.seriesComplete || 0, coronationReady:coronationReady(activePet) };
   const head = h('div', { class: 'reward-shop-intro' },
     h('div',null,h('b',null,'宠物道具'),h('span',null,'只保留真正能使用的食物和玩具。')),
     h('button', { class: 'btn btn-ghost btn-sm', onclick: () => ctx.navigate('rewards','owned') }, icon('bag'), '已拥有'));
@@ -288,7 +326,7 @@ async function renderShop(box, ctx) {
       const unl = isUnlocked(item, ctxUn);
       const owned = invMap.get(item.id);
       const cell = h('button', { class: 'shop-cell' + (unl ? '' : ' locked'), onclick: () => itemModal(item, owned, ctx) },
-        owned && item.type === 'perm' ? h('span', { class: 'owned' }, '已拥有') : owned ? h('span', { class: 'owned' }, `×${owned.qty}`) : null,
+        owned && (item.type === 'perm' || item.unique) ? h('span', { class: 'owned' }, '已拥有') : owned ? h('span', { class: 'owned' }, `×${owned.qty}`) : null,
         h('img', { src: shopArt(item.id), alt: item.name }),
         h('div', { class: 'nm' }, item.name),
         h('div', { class: 'pr' }, unl ? `${item.price} 积分` : (unlockText(item) || '未开放')));
@@ -310,9 +348,11 @@ async function renderUserRewardShop(box,ctx){
 }
 async function itemModal(item, owned, ctx) {
   const S = stats() || {};
-  const unl = isUnlocked(item, { maxStage: S.petMaxStage || 1, badgeCount: S.badgeCount || 0, seriesComplete: S.seriesComplete || 0 });
+  const activePet=await getActivePet();
+  const unl = isUnlocked(item, { maxStage: S.petMaxStage || 1, badgeCount: S.badgeCount || 0, seriesComplete: S.seriesComplete || 0, coronationReady:coronationReady(activePet) });
   const bal = balance();
-  const canBuy = unl && !(item.type === 'perm' && owned && owned.qty > 0) && bal >= item.price;
+  const alreadyOwned = !!owned?.qty && (item.type === 'perm' || item.unique);
+  const canBuy = unl && !alreadyOwned && !(item.id===CROWN_ITEM_ID && activePet?.coronationAt) && bal >= item.price;
   openModal({
     title: item.name,
     content: h('div', null,
@@ -320,15 +360,16 @@ async function itemModal(item, owned, ctx) {
       h('div', { class: 'row-sub', style: 'justify-content:center;margin-top:10px' },
         h('span', { class: 'tag tag-acc' }, `${item.price} 积分`),
         h('span', { class: 'tag' }, item.type === 'consumable' ? '消耗品' : '永久'),
-        owned ? h('span', { class: 'tag tag-pri' }, item.type === 'perm' ? '已拥有' : `拥有 ×${owned.qty}`) : null),
+        owned ? h('span', { class: 'tag tag-pri' }, (item.type === 'perm' || item.unique) ? '已拥有' : `拥有 ×${owned.qty}`) : null),
       h('div', { class: 'row-sub', style: 'justify-content:center;margin-top:6px' }, item.desc),
+      item.id===CROWN_ITEM_ID ? h('div',{class:'coronation-shop-note'},icon('star'),coronationReady(activePet)?'加冕条件已满足：兑换后回伙伴页完成仪式。':activePet?.coronationAt?'已经完成加冕，不需要再次兑换。':`陪伴值达到 ${COMPANION_CONFIG.coronationGrowth} 后开放兑换。`) : null,
       !unl ? h('div', { class: 'form-hint', style: 'text-align:center;margin-top:8px' }, '解锁条件：' + unlockText(item)) : null,
       !canBuy && unl ? h('div', { class: 'form-hint', style: 'text-align:center;margin-top:8px' },
-        item.type === 'perm' && owned ? '永久物品已拥有，不会重复扣分' : bal < item.price ? `积分还差 ${item.price - bal}，去做点事吧` : '') : null),
+        alreadyOwned ? '已经拥有，不会重复扣分' : activePet?.coronationAt && item.id===CROWN_ITEM_ID ? '伙伴已经完成加冕' : bal < item.price ? `积分还差 ${item.price - bal}，去做点事吧` : '') : null),
     actions: [
       { label: '关闭', onClick: (c) => c() },
       {
-        label: canBuy ? `确认兑换 · ${item.price}积分` : (unl ? '积分不足' : '未解锁'), cls: 'btn-primary exchange-confirm', disabled: !canBuy,
+        label: canBuy ? `确认兑换 · ${item.price}积分` : (alreadyOwned ? '已拥有' : activePet?.coronationAt && item.id===CROWN_ITEM_ID ? '已完成加冕' : (unl ? '积分不足' : '未解锁')), cls: 'btn-primary exchange-confirm', disabled: !canBuy,
         onClick: async (c) => {
           const r = await purchaseItem(item);
           if (r.err) { toast(r.err, { ic: 'error' }); return; }
@@ -357,11 +398,13 @@ async function renderBag(box, ctx) {
         h('img', { src: shopArt(item.id), style: 'width:44px;height:44px;border-radius:12px', alt: item.name }),
         h('div', { class: 'row-main' }, h('div', { class: 'row-title', style: 'font-size:13.5px' }, item.name), h('div', { class: 'row-sub' }, item.desc)),
         h('span', { class: 'qty num' }, `×${it.qty}`),
-        h('button', { class: 'btn btn-soft btn-sm', onclick: async (e) => {
-          const btn=e.currentTarget; if(btn.disabled)return; btn.disabled=true;
-          try { const result=await usePetItem(item.id); if(result?.err){toast(result.err,{ic:'error'});return;} sound.play('pet'); toast(`用掉了「${item.name}」`); ctx.rerender(); }
-          finally { btn.disabled=false; }
-        } }, '使用')));
+        item.id===CROWN_ITEM_ID
+          ? h('button',{class:'btn btn-primary btn-sm',onclick:()=>ctx.navigate('home')},'去加冕')
+          : h('button', { class: 'btn btn-soft btn-sm', onclick: async (e) => {
+              const btn=e.currentTarget; if(btn.disabled)return; btn.disabled=true;
+              try { const result=await usePetItem(item.id); if(result?.err){toast(result.err,{ic:'error'});return;} sound.play('pet'); toast(`用掉了「${item.name}」`); ctx.rerender(); }
+              finally { btn.disabled=false; }
+            } }, '使用')));
     } else {
       hasP = true;
       cardP.append(h('div', { class: 'row-item inv-row' },
@@ -411,41 +454,77 @@ async function usePerm(item, ctx) {
 async function renderBadges(box, ctx) {
   const [unlocked, showcase, S] = await Promise.all([all('badges'), loadKV('showcase'), Promise.resolve(stats() || {})]);
   const gotMap = new Map(unlocked.map((u) => [u.badgeId, u]));
-  const filterRow = h('div', { class: 'seg', style: 'margin-bottom:8px' },
-    [['all', '全部'], ['got', '已获得'], ['nogot', '未获得']].map(([id, nm]) =>
-      h('button', { class: badgeFilter.got === id || (id === 'all' && !badgeFilter.got) ? 'on' : '', onclick: (e) => { badgeFilter.got = id === 'all' ? null : id; [...filterRow.children].forEach((x) => x.classList.remove('on')); e.currentTarget.classList.add('on'); sound.play('tap'); drawBook(); } }, nm)));
-  const serieSeg = h('div', { class: 'seg', style: 'margin-bottom:12px' },
-    h('button', { class: !badgeFilter.series ? 'on' : '', onclick: (e) => { badgeFilter.series = null; [...serieSeg.children].forEach((x) => x.classList.remove('on')); e.currentTarget.classList.add('on'); drawBook(); } }, '12系列'),
-    BADGE_SERIES.map((s) => h('button', { class: badgeFilter.series === s ? 'on' : '', onclick: (e) => { badgeFilter.series = s; [...serieSeg.children].forEach((x) => x.classList.remove('on')); e.currentTarget.classList.add('on'); drawBook(); } }, s.slice(0, 2))));
-  const bookWrap = h('div');
-  box.append(
-    h('div', { class: 'card' },
-      h('div', { class: 'card-title' }, icon('badge'), '收藏进度'),
-      h('div', { class: 'stat-row' },
-        h('div', { class: 'stat-cell' }, h('div', { class: 'v num' }, `${unlocked.length}/120`), h('div', { class: 'k' }, '已解锁')),
-        h('div', { class: 'stat-cell' }, h('div', { class: 'v num' }, `${S.seriesComplete || 0}/12`), h('div', { class: 'k' }, '系列集齐')),
-        h('div', { class: 'stat-cell' }, h('div', { class: 'v num' }, `${showcase.length}/10`), h('div', { class: 'k' }, '展示栏')))),
-    filterRow, serieSeg, bookWrap);
+  const bookWrap = h('div', { class:'badge-book-wrap' });
+  const filterText = h('span', { class:'badge-filter-text' });
+
+  function statusLabel() {
+    if (badgeFilter.got === 'got') return '已获得';
+    if (badgeFilter.got === 'nogot') return '未获得';
+    return '全部徽章';
+  }
+  function seriesLabel() { return badgeFilter.series || '全部系列'; }
+  function updateFilterText() { filterText.textContent = `${statusLabel()} · ${seriesLabel()}`; }
+
+  async function openFilter() {
+    const v = await formDlg({
+      title:'筛选徽章',
+      submitLabel:'应用筛选',
+      fields:[
+        { key:'got', label:'解锁状态', type:'select', value:badgeFilter.got || 'all', options:[['all','全部徽章'],['got','已获得'],['nogot','未获得']] },
+        { key:'series', label:'徽章系列', type:'select', value:badgeFilter.series || 'all', options:[['all','全部系列'], ...BADGE_SERIES.map((s)=>[s,s])] },
+      ],
+    });
+    if (!v) return;
+    badgeFilter.got = v.got === 'all' ? null : v.got;
+    badgeFilter.series = v.series === 'all' ? null : v.series;
+    updateFilterText();
+    await drawBook();
+  }
+
+  const head = h('section', { class:'badge-library-head' },
+    h('div', { class:'badge-library-title' },
+      h('div', null, h('span', { class:'badge-library-kicker' }, '徽章册'), h('h2', null, '把走过的日子收进这里'), h('p', null, '重要的第一次、坚持和陪伴，都会慢慢留下来。')),
+      h('button', { class:'btn btn-soft btn-sm', onclick:openFilter }, icon('settings'), '筛选')),
+    h('div', { class:'badge-progress-strip' },
+      h('div', null, h('b', { class:'num' }, `${unlocked.length}/120`), h('span', null, '已解锁')),
+      h('div', null, h('b', { class:'num' }, `${S.seriesComplete || 0}/12`), h('span', null, '系列集齐')),
+      h('div', null, h('b', { class:'num' }, `${showcase.length}/10`), h('span', null, '展示栏'))),
+    h('button', { class:'badge-filter-bar', onclick:openFilter },
+      h('span', null, icon('settings'), '当前筛选'), filterText, icon('right')));
+  box.append(head, bookWrap);
+  updateFilterText();
+
   async function drawBook() {
-    bookWrap.innerHTML = '';
+    bookWrap.replaceChildren();
+    let rendered = 0;
     for (const serie of BADGE_SERIES) {
       if (badgeFilter.series && badgeFilter.series !== serie) continue;
-      const list = BADGES.filter((b) => b.series === serie).filter((b) => badgeFilter.got === null || (badgeFilter.got === 'got' ? gotMap.has(b.id) : !gotMap.has(b.id)));
-      const gotN = BADGES.filter((b) => b.series === serie && gotMap.has(b.id)).length;
-      const total = BADGES.filter((b) => b.series === serie).length;
-      const head = h('div', { class: 'serie-head' }, serie, h('span', { class: 'tag' + (gotN === total ? ' tag-pri' : '') }, `${gotN}/${total}`));
-      const grid = h('div', { class: 'badge-grid' });
+      const allInSeries = BADGES.filter((b) => b.series === serie);
+      const list = allInSeries.filter((b) => badgeFilter.got === null || (badgeFilter.got === 'got' ? gotMap.has(b.id) : !gotMap.has(b.id)));
+      if (!list.length) continue;
+      rendered += list.length;
+      const gotN = allInSeries.filter((b) => gotMap.has(b.id)).length;
+      const total = allInSeries.length;
+      const section = h('section', { class:'badge-series-section' },
+        h('div', { class:'serie-head' }, h('div', null, h('b', null, serie), h('small', null, `${gotN}/${total} 已解锁`)), gotN === total ? h('span', { class:'tag tag-pri' }, '已集齐') : null));
+      const grid = h('div', { class:'badge-grid' });
       for (const b of list) {
         const got = gotMap.get(b.id);
-        grid.append(h('button', { class: 'badge-cell' + (got ? ' got' : ''), onclick: (e) => { playBadgeTapFx(e.currentTarget, !!got, b.points); badgeDetail(b, got, e.currentTarget); } },
-          h('div', { class: 'badge-imgbox' + (got ? '' : ' locked') }, h('img', { src: badgeArt(b.id), alt: b.name, loading: 'lazy' })),
-          h('span', { class: 'nm' }, b.name)));
+        grid.append(h('button', { class:'badge-cell' + (got ? ' got' : ''), onclick:(e)=>{ playBadgeTapFx(e.currentTarget, !!got, b.points); badgeDetail(b, got, e.currentTarget); } },
+          h('div', { class:'badge-imgbox' + (got ? '' : ' locked') }, h('img', { src:badgeArt(b.id), alt:b.name, loading:'lazy' })),
+          h('span', { class:'nm' }, b.name)));
       }
-      bookWrap.append(head, grid);
+      section.append(grid);
+      bookWrap.append(section);
+    }
+    if (!rendered) {
+      const { petEmptyState } = await import('../ui/empty.js');
+      bookWrap.append(await petEmptyState('badges',{compact:true,actionLabel:'重置筛选',onAction:()=>{ badgeFilter={series:null,got:null}; updateFilterText(); drawBook(); }}));
     }
   }
-  drawBook();
+  await drawBook();
 }
+
 function badgeDetail(b, got, anchor = null) {
   const rar = badgeRarity(b.points);
   const preview = h('button', { class: 'badge-detail-hero' + (got ? ' got' : ''), onclick: (e) => playBadgeTapFx(e.currentTarget, !!got, b.points) },

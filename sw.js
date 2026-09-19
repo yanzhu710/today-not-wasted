@@ -1,6 +1,6 @@
-// v2.4.5. All executable dependencies are cached as a unit; artwork is optional.
+// v2.5.0. All executable dependencies are cached as a unit; artwork is optional.
 // Never stores user records, never calls IndexedDB, never clears another app's cache.
-const RELEASE = '2.4.5';
+const RELEASE = '2.5.0';
 const PREFIX = 'tjmbg-app:' + encodeURIComponent(new URL(self.registration.scope).pathname) + ':';
 const CACHE = PREFIX + RELEASE;
 const CORE = [
@@ -47,6 +47,8 @@ const CORE = [
   "./js/pages/today.js",
   "./js/ui/paper.js",
   "./js/ui/empty.js",
+  "./js/ui/flashcards.js",
+  "./js/ui/glb-card-viewer.js",
   "./js/ui/tabs.js",
   "./js/ui/time-range.js",
   "./js/core/reward-art.js"
@@ -61,6 +63,43 @@ const ART = [
   "./assets/ui/pets/maotuan.webp",
   "./assets/ui/pets/lili.webp",
   "./assets/ui/pets/mituan.webp",
+  "./assets/pets/ali/ali_lv1_idle.png",
+  "./assets/pets/ali/ali_lv1_happy.png",
+  "./assets/pets/ali/ali_lv1_touch.png",
+  "./assets/pets/ali/ali_lv1_feed.png",
+  "./assets/pets/ali/ali_lv1_play.png",
+  "./assets/pets/ali/ali_lv1_encourage.png",
+  "./assets/pets/ali/ali_lv1_sleep.png",
+  "./assets/pets/ali/ali_lv1_celebrate.png",
+  "./assets/pets/ali/ali_lv2_idle.png",
+  "./assets/pets/ali/ali_lv2_happy.png",
+  "./assets/pets/ali/ali_lv2_touch.png",
+  "./assets/pets/ali/ali_lv2_feed.png",
+  "./assets/pets/ali/ali_lv2_play.png",
+  "./assets/pets/ali/ali_lv2_encourage.png",
+  "./assets/pets/ali/ali_lv2_sleep.png",
+  "./assets/pets/ali/ali_lv2_celebrate.png",
+  "./assets/pets/ali/ali_lv3_idle.png",
+  "./assets/pets/ali/ali_lv3_happy.png",
+  "./assets/pets/ali/ali_lv3_touch.png",
+  "./assets/pets/ali/ali_lv3_feed.png",
+  "./assets/pets/ali/ali_lv3_play.png",
+  "./assets/pets/ali/ali_lv3_encourage.png",
+  "./assets/pets/ali/ali_lv3_sleep.png",
+  "./assets/pets/ali/ali_lv3_celebrate.png",
+  "./assets/pets/ali/ali_lv4_idle.png",
+  "./assets/pets/ali/ali_lv4_happy.png",
+  "./assets/pets/ali/ali_lv4_touch.png",
+  "./assets/pets/ali/ali_lv4_feed.png",
+  "./assets/pets/ali/ali_lv4_play.png",
+  "./assets/pets/ali/ali_lv4_encourage.png",
+  "./assets/pets/ali/ali_lv4_sleep.png",
+  "./assets/pets/ali/ali_lv4_celebrate.png",
+  "./assets/cards/runtime/stage1.glb",
+  "./assets/cards/runtime/stage2.glb",
+  "./assets/cards/runtime/stage3.glb",
+  "./assets/cards/runtime/stage4.glb",
+  "./assets/shop/S061.svg",
   "./icons/apple-touch-icon.png",
   "./icons/icon-512.png",
   "./icons/icon-192.png",

@@ -2,7 +2,7 @@
 import { all, allByIndex, put, del, get, loadKV } from '../core/db.js';
 import { CATS, catName, catColor, BADGES, PETS, stageOf, stageProgress, moodById } from '../core/catalog.js';
 import { petSVG, petAct, floatFx } from '../core/pets.js';
-import { doTaskComplete, doTaskUndo, deleteTask, addQuickRecord, doHabitDone, doHabitUndo, addLedgerEntry, todaySummary, balance } from '../core/engine.js';
+import { doTaskComplete, doTaskUndo, deleteTask, addQuickRecord, doHabitDone, doHabitUndo, addLedgerEntry, todaySummary, balance, petInteract } from '../core/engine.js';
 import { h, icon, todayKey, addDaysKey, weekdayOf, uid, fmtMin, fmtMoney } from '../core/util.js';
 import { holidayName, dayInfo, nextHoliday } from '../core/holidays.js';
 import { queueSettle, actionSheet, confirmDlg, toast } from '../core/fx.js';
@@ -52,12 +52,14 @@ export async function renderToday(view, ctx) {
       h('span',{class:'today-hero-action-icon'},icon(item.ic)),h('b',null,item.label),h('small',null,'新建 / 记录'))));
 
   if (active && def) {
-    const progress = stageProgress(active.growth || 0);
+    const progress = stageProgress(active.growth || 0, !!active.coronationAt);
     const bubble = h('p', { class: 'ref-hero-bubble', 'aria-live': 'polite' },
       summary.validEvents ? `今天已经认真记下 ${summary.validEvents} 件小事啦。` : '新的一天，也是很棒的一天！');
     let figure;
-    figure = petFigure(active, { interactive: true, onDispose: ctx.onDispose, onClick: () => {
+    figure = petFigure(active, { interactive: true, onDispose: ctx.onDispose, onClick: async () => {
+      const r=await petInteract({kind:'touch',touch:true}).catch(()=>null);
       sound.play('pet'); petResponse(figure, bubble, '我在呢，慢慢来就好。', 'touch');
+      if(r?.growth>0)toast(`陪伴值 +${r.growth}`,{ic:'heart'});
     }});
     const scene = h('div', { class: 'ref-hero-scene ref-hero-scene-clean' },
       h('span', { class: 'ref-leaf leaf-a', 'aria-hidden':'true' }),
@@ -71,7 +73,7 @@ export async function renderToday(view, ctx) {
         h('b', null, `Lv.${progress.cur.n}`),
         h('strong', null, active.name || def.name),
         h('progress', { class:'paper-progress', value:Math.max(0,Math.min(1,progress.ratio)), max:'1', 'aria-label':'当前阶段成长进度' }),
-        h('span', null, progress.next ? `${active.growth||0}/${progress.next.min}` : '一起同行'),
+        h('span', null, progress.coronationReady ? '等待加冕' : progress.next ? `${active.growth||0}/${progress.next.min}` : '纪念同行'),
         h('button', { class:'btn ref-partner-btn', onclick:()=>{ location.hash='#/home?tab=home'; } }, '查看伙伴', icon('right'))),
       actionDock);
     view.append(hero);
@@ -309,10 +311,85 @@ export async function quickRecordDialog({ dateKey: recordDate = todayKey(), titl
 }
 
 // ---- 快速记账弹窗 ----
+// Small expression parser for amounts. It deliberately does not use eval / Function.
+// Supports decimals, + - * /, Chinese calculator symbols × ÷ and parentheses.
+function parseMoneyExpression(raw) {
+  const source = String(raw || '').trim().replace(/[，,￥¥\s]/g, '').replace(/×/g, '*').replace(/÷/g, '/');
+  if (!source) return { ok:false, value:null, cents:null };
+  if (source.length > 80 || /[^0-9.+\-*/()]/.test(source)) return { ok:false, value:null, cents:null };
+  let i = 0;
+  const peek = () => source[i];
+  function number() {
+    const start = i;
+    let dots = 0;
+    while (i < source.length && /[0-9.]/.test(source[i])) { if (source[i] === '.') dots += 1; if (dots > 1) throw new Error('bad number'); i += 1; }
+    if (start === i || source.slice(start, i) === '.') throw new Error('number expected');
+    const n = Number(source.slice(start, i));
+    if (!Number.isFinite(n)) throw new Error('bad number');
+    return n;
+  }
+  function factor() {
+    if (peek() === '+') { i += 1; return factor(); }
+    if (peek() === '-') { i += 1; return -factor(); }
+    if (peek() === '(') {
+      i += 1; const v = expression(); if (peek() !== ')') throw new Error('missing )'); i += 1; return v;
+    }
+    return number();
+  }
+  function term() {
+    let v = factor();
+    while (peek() === '*' || peek() === '/') {
+      const op = source[i++]; const rhs = factor();
+      if (op === '/' && Math.abs(rhs) < 1e-12) throw new Error('divide by zero');
+      v = op === '*' ? v * rhs : v / rhs;
+      if (!Number.isFinite(v)) throw new Error('bad result');
+    }
+    return v;
+  }
+  function expression() {
+    let v = term();
+    while (peek() === '+' || peek() === '-') {
+      const op = source[i++]; const rhs = term(); v = op === '+' ? v + rhs : v - rhs;
+      if (!Number.isFinite(v)) throw new Error('bad result');
+    }
+    return v;
+  }
+  try {
+    const value = expression(); if (i !== source.length || !Number.isFinite(value) || value <= 0 || value > 999999999) return { ok:false, value:null, cents:null };
+    const cents = Math.round((value + Number.EPSILON) * 100);
+    return cents > 0 ? { ok:true, value:cents / 100, cents } : { ok:false, value:null, cents:null };
+  } catch { return { ok:false, value:null, cents:null }; }
+}
+
 export async function quickLedgerDialog({ dateKey: presetDate = todayKey() } = {}) {
   const { LEDGER_OUT, LEDGER_IN } = await import('../core/catalog.js');
   let type = 'out';
-  const amtInp = h('input', { class: 'input', type: 'number', min: '0', step: '0.01', inputmode: 'decimal', placeholder: '0.00' });
+  const amtInp = h('input', { class: 'input ledger-amount-input', type: 'text', inputmode: 'decimal', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: '例如 18+12.5' });
+  const calcResult = h('div', { class:'ledger-calc-result', 'aria-live':'polite' }, h('span', null, '可直接输入算式，例如 18+12.5'));
+  const refreshCalc = () => {
+    const raw = amtInp.value.trim();
+    if (!raw) { calcResult.className='ledger-calc-result'; calcResult.replaceChildren(h('span',null,'可直接输入算式，例如 18+12.5')); return; }
+    const parsed = parseMoneyExpression(raw);
+    if (!parsed.ok) { calcResult.className='ledger-calc-result invalid'; calcResult.replaceChildren(h('span',null,'算式还没写完整')); return; }
+    calcResult.className='ledger-calc-result valid';
+    calcResult.replaceChildren(h('span',null,raw.includes('+')||raw.includes('-')||raw.includes('*')||raw.includes('/')||raw.includes('×')||raw.includes('÷')?'计算结果':'金额'),h('b',{class:'num'},`¥${parsed.value.toFixed(2)}`));
+  };
+  amtInp.addEventListener('input', refreshCalc);
+  const insertAmountToken = (token) => {
+    const start = Number.isInteger(amtInp.selectionStart) ? amtInp.selectionStart : amtInp.value.length;
+    const end = Number.isInteger(amtInp.selectionEnd) ? amtInp.selectionEnd : start;
+    if (token === 'backspace') {
+      if (start !== end) amtInp.value = amtInp.value.slice(0,start) + amtInp.value.slice(end);
+      else if (start > 0) amtInp.value = amtInp.value.slice(0,start-1) + amtInp.value.slice(end);
+    } else if (token === 'clear') amtInp.value = '';
+    else amtInp.value = amtInp.value.slice(0,start) + token + amtInp.value.slice(end);
+    const pos = token === 'backspace' ? Math.max(0,start-1) : token === 'clear' ? 0 : start + token.length;
+    amtInp.focus();
+    try { amtInp.setSelectionRange(pos,pos); } catch {}
+    refreshCalc();
+  };
+  const calcKeys = h('div', { class:'ledger-calc-keys', 'aria-label':'金额计算按键' },
+    [['+','+'],['−','-'],['×','×'],['÷','÷'],['⌫','backspace']].map(([label,token])=>h('button',{type:'button','aria-label':label==='⌫'?'删除一位':'输入'+label,onclick:()=>insertAmountToken(token)},label)));
   const outSel = h('select', { class: 'input' }, LEDGER_OUT.map((c) => h('option', { value: c }, c)));
   const inSel = h('select', { class: 'input', style: 'display:none' }, LEDGER_IN.map((c) => h('option', { value: c }, c)));
   const dateInp = h('input', { class: 'input', type: 'date', value: presetDate });
@@ -324,7 +401,7 @@ export async function quickLedgerDialog({ dateKey: presetDate = todayKey() } = {
   openModal({
     title: '记一笔',
     content: h('div', { class: 'form-list' }, seg,
-      h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '金额'), amtInp),
+      h('div', { class: 'form-item ledger-amount-field' }, h('span', { class: 'form-label' }, '金额'), amtInp, calcKeys, calcResult),
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '分类'), outSel, inSel),
       h('div', { class: 'field-row' }, h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '日期'), dateInp)),
       h('div', { class: 'form-item' }, h('span', { class: 'form-label' }, '备注'), noteInp),
@@ -333,8 +410,9 @@ export async function quickLedgerDialog({ dateKey: presetDate = todayKey() } = {
       { label: '取消', onClick: (c) => c() },
       {
         label: '保存', cls: 'btn-primary', onClick: async (c) => {
-          const amt = Math.round(parseFloat(amtInp.value) * 100);
-          if (!amt || amt <= 0) { toast('请填写正确的金额', { ic: 'error' }); return; }
+          const parsed = parseMoneyExpression(amtInp.value);
+          if (!parsed.ok) { toast('请填写正确的金额或算式', { ic: 'error' }); return; }
+          const amt = parsed.cents;
           const res = await addLedgerEntry({ type, amount: amt, category: (type === 'out' ? outSel : inSel).value, note: noteInp.value.trim(), dateKey: dateInp.value || todayKey() });
           if (res.points) queueSettle([res]);
           toast('账目已保存到「记录」', { ic:'check' });

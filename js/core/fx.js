@@ -324,7 +324,7 @@ async function showCele(item) {
       const card = h('div', { class: 'cele-card' },
         h('div', { class: 'cele-kicker' }, '宠物成长'),
         h('div', { class: 'cele-stage-num' }, `阶段 ${item.stage} · ${item.stageName}`),
-        h('div', { class: 'cele-name' }, `${item.petName} 和你的默契又深了一层`),
+        h('div', { class: 'cele-name' }, `${item.petName} 和你的陪伴又加深了一点`),
         h('div', { class: 'cele-sub' }, item.sub || '新的表现与解锁正在等待'));
       ov.append(card);
       requestAnimationFrame(() => ov.classList.add('show'));

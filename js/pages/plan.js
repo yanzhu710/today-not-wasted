@@ -396,71 +396,118 @@ async function listDialog() {
 
 // ---- 生活灵感 ----
 function renderInsp(box, ctx) {
-  const favBox = h('div');
-  const cardBox = h('div');
+  const favBox = h('div', { class: 'insp-favorites' });
+  const recommendation = h('div', { class: 'insp-recommendation' });
+  const filterSummary = h('span', { class: 'insp-filter-summary' });
   let filters = { min: null, scene: null, type: null };
   let current = null;
+
   async function customList() {
     const insp = await loadKV('inspiration');
     return insp.custom || [];
   }
-  const pool = async () => {
-    const custom = await customList();
-    const all = [...INSPIRATIONS, ...custom];
-    return all.filter((x) =>
-      (filters.min == null || x.min === filters.min) &&
+  async function pool() {
+    const insp = await loadKV('inspiration');
+    const custom = insp.custom || [];
+    const hidden = new Set(insp.hidden || []);
+    const validTypes = new Set(['relax','tidy','study','sport','social']);
+    const typeOf = (x) => validTypes.has(x.type) ? x.type : (x.cat === 'health' ? 'sport' : x.cat === 'work' ? 'study' : 'relax');
+    return [...INSPIRATIONS, ...custom].filter((x) =>
+      !hidden.has(x.t) &&
+      (filters.min == null || x.min <= filters.min) &&
       (filters.scene == null || x.scene === filters.scene) &&
-      (filters.type == null || x.type === filters.type));
-  };
-  const seg = (list, key, labels) => h('div', { class: 'seg' },
-    h('button', { class: 'on', onclick: (e) => { filters[key] = null; mark(e); draw(); } }, labels[0]),
-    list.map(([v, lb]) => h('button', { onclick: (e) => { filters[key] = v; mark(e); draw(); } }, lb)));
-  function mark(e) { [...e.currentTarget.parentElement.children].forEach((x) => x.classList.remove('on')); e.currentTarget.classList.add('on'); sound.play('tap'); }
+      (filters.type == null || typeOf(x) === filters.type));
+  }
+  function filterText() {
+    const min = filters.min == null ? '任意时长' : `${filters.min}分钟内`;
+    const scene = filters.scene == null ? '不限场景' : filters.scene === 'home' ? '在家' : '出门';
+    const typeMap = { relax:'放松', tidy:'整理', study:'学习', sport:'运动', social:'陪伴' };
+    const type = filters.type == null ? '不限类型' : (typeMap[filters.type] || '其他');
+    return `${min} · ${scene} · ${type}`;
+  }
+  function updateFilterSummary() { filterSummary.textContent = filterText(); }
+
+  async function openFilters() {
+    const v = await formDlg({
+      title: '筛选生活灵感',
+      submitLabel: '应用筛选',
+      fields: [
+        { key:'min', label:'可用时间', type:'select', value:filters.min == null ? 'all' : String(filters.min), options:[['all','任意时长'],['5','5分钟内'],['15','15分钟内'],['30','半小时内'],['60','一小时内']] },
+        { key:'scene', label:'所在场景', type:'select', value:filters.scene || 'all', options:[['all','都可以'],['home','在家'],['out','出门']] },
+        { key:'type', label:'想做什么', type:'select', value:filters.type || 'all', options:[['all','都可以'],['relax','放松'],['tidy','整理'],['study','学习'],['sport','运动'],['social','陪伴']] },
+      ],
+    });
+    if (!v) return;
+    filters = {
+      min: v.min === 'all' ? null : Number(v.min),
+      scene: v.scene === 'all' ? null : v.scene,
+      type: v.type === 'all' ? null : v.type,
+    };
+    updateFilterSummary();
+    await draw();
+  }
 
   async function draw() {
-    cardBox.innerHTML = '';
-    cardBox.append(h('div', { class: 'insp-filter' },
-      seg([[5, '5分钟'], [15, '15分钟'], [30, '半小时'], [60, '一小时']], 'min', ['任意时长']),
-      seg([['home', '在家'], ['out', '出门']], 'scene', ['都可以']),
-      seg([['relax', '放松'], ['tidy', '整理'], ['study', '学习'], ['sport', '运动'], ['social', '陪伴']], 'type', ['都可以'])));
+    recommendation.replaceChildren();
     const p = await pool();
-    if (!p.length) { cardBox.append(h('div', { class: 'card empty' }, '这个组合下暂时没有灵感，换个条件试试')); return; }
+    if (!p.length) {
+      recommendation.append(h('section', { class:'insp-empty-blend' },
+        h('b', null, '这个组合下暂时没有灵感'),
+        h('span', null, '换一个筛选条件，很快就能找到适合现在的小事。'),
+        h('button', { class:'btn btn-soft btn-sm', onclick:openFilters }, '重新筛选')));
+      return;
+    }
     current = p[Math.floor(Math.random() * p.length)];
-    cardBox.append(h('div', { class: 'card insp-card' },
-      h('div', { class: 'row-sub' }, h('span', { class: 'tag tag-pri' }, `${current.min}分钟`), h('span', { class: 'tag' }, current.scene === 'home' ? '在家' : '出门'), h('span', { class: 'tag' }, catName(current.cat))),
-      h('div', { class: 'insp-title' }, current.t),
-      h('div', { class: 'insp-desc' }, current.d),
-      h('div', { class: 'btn-row', style: 'margin-top:12px' },
-        h('button', { class: 'btn btn-ghost btn-sm', onclick: () => draw() }, '换一个'),
-        h('button', { class: 'btn btn-ghost btn-sm', onclick: async () => { const insp = await loadKV('inspiration'); insp.hidden.push(current.t); await saveKV('inspiration', insp); toast('下次不推荐这条了'); draw(); } }, '不感兴趣'),
-        h('button', { class: 'btn btn-ghost btn-sm', onclick: async () => { const insp = await loadKV('inspiration'); if (!insp.favorites.includes(current.t)) insp.favorites.push(current.t); await saveKV('inspiration', insp); toast('已收藏'); drawFav(); } }, '收藏'),
-        h('button', {
-          class: 'btn btn-primary btn-sm', style: 'flex:1', onclick: async () => {
-            const { quickRecordDialog } = await import('./today.js');
-            await quickRecordDialog({ category: current.cat, title: current.t, note: '来自生活灵感' });
-          },
-        }, '去记录'))));
+    const meta = h('div', { class:'insp-meta' },
+      h('span', { class:'tag tag-pri' }, `${current.min}分钟`),
+      h('span', { class:'tag' }, current.scene === 'home' ? '在家' : '出门'),
+      h('span', { class:'tag' }, catName(current.cat)));
+    const more = h('button', { class:'iconbtn insp-more', 'aria-label':'更多操作', onclick:async()=>{
+      await actionSheet(current.t, [
+        { ic:'star', label:'收藏这条灵感', onClick:async()=>{ const insp=await loadKV('inspiration'); if(!insp.favorites.includes(current.t)) insp.favorites.push(current.t); await saveKV('inspiration', insp); toast('已收藏'); await drawFav(); } },
+        { ic:'trash', label:'以后少推荐这条', onClick:async()=>{ const insp=await loadKV('inspiration'); if(!Array.isArray(insp.hidden)) insp.hidden=[]; if(!insp.hidden.includes(current.t)) insp.hidden.push(current.t); await saveKV('inspiration', insp); toast('记下了，下次不推荐'); await draw(); } },
+      ]);
+    } }, icon('settings'));
+    const card = h('section', { class:'insp-main-card' },
+      h('div', { class:'insp-card-top' }, meta, more),
+      h('div', { class:'insp-title' }, current.t),
+      h('div', { class:'insp-desc' }, current.d),
+      h('div', { class:'insp-primary-actions' },
+        h('button', { class:'btn btn-ghost', onclick:()=>draw() }, '换一个'),
+        h('button', { class:'btn btn-primary', onclick:async()=>{ const { quickRecordDialog }=await import('./today.js'); await quickRecordDialog({ category:current.cat, title:current.t, note:'来自生活灵感' }); } }, icon('quick'), '去记录')));
+    recommendation.append(card);
   }
+
   async function drawFav() {
     const insp = await loadKV('inspiration');
-    favBox.innerHTML = '';
-    const card = h('div', { class: 'card' }, h('div', { class: 'card-title' }, icon('star'), '收藏的灵感'));
-    if (!insp.favorites.length) card.append(await petEmptyState('inspiration',{compact:true}));
-    for (const t of insp.favorites) {
-      const item = INSPIRATIONS.find((x) => x.t === t);
-      card.append(h('div', { class: 'row-item' },
-        h('div', { class: 'row-main' }, h('div', { class: 'row-title' }, t), item ? h('div', { class: 'row-sub' }, `${item.min}分钟 · ${item.d}`) : null),
-        item ? h('button', { class: 'btn btn-soft btn-sm', onclick: async () => { const { quickRecordDialog } = await import('./today.js'); await quickRecordDialog({ category:item.cat, title:item.t }); } }, '去记录') : null,
-        h('button', { class: 'iconbtn', style: 'width:34px;height:34px;font-size:16px', onclick: async () => { const insp2 = await loadKV('inspiration'); insp2.favorites = insp2.favorites.filter((x) => x !== t); await saveKV('inspiration', insp2); drawFav(); } }, icon('trash'))));
+    favBox.replaceChildren();
+    const favorites = Array.isArray(insp.favorites) ? insp.favorites : [];
+    if (!favorites.length) return;
+    const custom = Array.isArray(insp.custom) ? insp.custom : [];
+    const allItems = [...INSPIRATIONS, ...custom];
+    const list = h('div', { class:'insp-fav-list' });
+    for (const t of favorites.slice(0, 8)) {
+      const item = allItems.find((x) => x.t === t);
+      list.append(h('div', { class:'insp-fav-row' },
+        h('button', { class:'insp-fav-main', onclick:async()=>{ if(!item)return; const { quickRecordDialog }=await import('./today.js'); await quickRecordDialog({ category:item.cat, title:item.t }); } },
+          h('b', null, t), item ? h('span', null, `${item.min}分钟 · ${item.d}`) : null),
+        h('button', { class:'iconbtn', 'aria-label':'取消收藏', onclick:async()=>{ const insp2=await loadKV('inspiration'); insp2.favorites=insp2.favorites.filter((x)=>x!==t); await saveKV('inspiration', insp2); await drawFav(); } }, icon('trash'))));
     }
-    favBox.append(card);
+    favBox.append(h('section', { class:'insp-fav-section' },
+      h('div', { class:'section-inline-title' }, h('b', null, '收藏的灵感'), h('span', null, `${favorites.length} 条`)), list));
   }
-  box.append(h('div', { class: 'card' },
-    h('div', { class: 'card-title' }, icon('idea'), '生活灵感',
-      h('button', { class: 'more', onclick: () => createInspiration() }, icon('plus'), '创建')),
-    h('div', { class: 'form-hint', style: 'margin-bottom:8px' }, '选一个适合现在的时间和场景，让今天多一点灵感。')),
-    cardBox, favBox);
-  draw(); drawFav();
+
+  const hero = h('section', { class:'insp-shell' },
+    h('div', { class:'insp-head' },
+      h('div', null, h('span', { class:'insp-kicker' }, '此刻的小灵感'), h('h2', null, '现在想做点什么？'), h('p', null, '给自己一点具体又轻松的选择。')),
+      h('button', { class:'btn btn-soft btn-sm', onclick:()=>createInspiration() }, icon('plus'), '自己写')),
+    h('button', { class:'insp-filter-button', onclick:openFilters },
+      h('span', null, icon('settings'), '当前条件'), filterSummary, icon('right')),
+    recommendation);
+  box.append(hero, favBox);
+  updateFilterSummary();
+  draw();
+  drawFav();
 }
 
 function createInspiration() {

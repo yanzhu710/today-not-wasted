@@ -3,7 +3,7 @@ import { openDB, idbPut, idbGet, idbDelete, idbClear, idbAll, idbAllByIndex, idb
 import { uid } from './util.js';
 
 export const DB_NAME = 'tjmbg';
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 const STORES = {
   kv: { keyPath: 'key' },
@@ -23,6 +23,7 @@ const STORES = {
   badges: { keyPath: 'badgeId' },
   pets: { keyPath: 'petId' },
   petlog: { keyPath: 'id', idx: [['dateKey']] },
+  pet_memories: { keyPath: 'id', idx: [['petId'], ['dateKey'], ['kind']] },
   inventory: { keyPath: 'itemId' },
   custom_rewards: { keyPath: 'id' },
   reviews: { keyPath: 'id' },
@@ -31,11 +32,11 @@ const STORES = {
 let _db = null;
 export async function initDB() {
   if (_db) return _db;
-  _db = await openDB(DB_NAME, SCHEMA_VERSION, (db) => {
+  _db = await openDB(DB_NAME, SCHEMA_VERSION, (db, _oldVersion, upgradeTx) => {
     for (const [name, def] of Object.entries(STORES)) {
       let st;
       if (!db.objectStoreNames.contains(name)) st = db.createObjectStore(name, { keyPath: def.keyPath });
-      else st = db.transaction.objectStore(name);
+      else st = upgradeTx.objectStore(name);
       (def.idx || []).forEach(([iname, keyPath, unique]) => {
         if (!st.indexNames.contains(iname)) st.createIndex(iname, keyPath || iname, { unique: !!unique });
       });
@@ -57,7 +58,7 @@ export const atomically = (storeNames, ops) => idbTransaction(_db, storeNames, o
 
 // ---- KV（配置、档案、首页布局等小数据）----
 const KV_DEFAULTS = {
-  app_meta: { schemaVersion: SCHEMA_VERSION, onboarded: false, createdAt: null, lastBackupAt: null, hiddenCards: [], lastReviewRead: {} },
+  app_meta: { schemaVersion: SCHEMA_VERSION, onboarded: false, createdAt: null, lastBackupAt: null, hiddenCards: [], lastReviewRead: {}, activePet: null, companionMigration: 0, companionView: 'form' },
   settings: { muted: false, volume: 70, motion: 'rich', theme: 'warm', currency: '¥', ledgerBudget: {} },
   profile: { account: '', nickname: '', avatarId: null, petName: '' },
   home_layout: { bg: null, rug: null, bed: null, desk: [], wall: [], ground: [], cabinet: null },

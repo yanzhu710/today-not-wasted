@@ -1,14 +1,29 @@
 // 今天没白过 · 宠物形象与家园场景（原创矢量形象，动作由 CSS 驱动）
-import { PETS, stageOf, shopById } from './catalog.js';
+import { PETS, PRIMARY_PET_ID, stageOf, shopById } from './catalog.js';
 import { shopArt } from './art.js';
 import { h } from './util.js';
+
+const ACTION_ALIAS = { eat:'feed', feed:'feed', touch:'touch', happy:'happy', play:'play', encourage:'encourage', sleep:'sleep', celebrate:'celebrate', idle:'idle' };
+export function petAssetPath(petId, stage=1, action='idle') {
+  if (petId !== PRIMARY_PET_ID) return `./assets/pets/${petId}.png`;
+  const lv=Math.max(1,Math.min(4,Number(stage)||1));
+  const act=ACTION_ALIAS[action]||'idle';
+  return `./assets/pets/ali/ali_lv${lv}_${act}.png`;
+}
+export function petStageNumber(petRow) { return stageOf(petRow?.growth||0, !!petRow?.coronationAt).n; }
+
 
 // 三只宠物：同一结构（身体/耳朵/脸/尾巴），不同几何与配色
 export function petSVG(petId, { equip = {}, pose = 'idle', stage = 1 } = {}) {
   const def = PETS.find((p) => p.petId === petId) || PETS[0];
-  const scale = 0.94 + Math.min(stage, 5) * 0.022;
+  const scale = 0.94 + Math.min(stage, 4) * 0.022;
 
-  // 优先使用正式宠物图片（assets/pets/{petId}.png），同时叠加装扮
+  // v2.5.0：默认伙伴使用 4 阶段 × 8 动作的独立透明 PNG。旧 SVG 只作为未来锁定伙伴的降级。
+  if (petId === PRIMARY_PET_ID) {
+    const src=petAssetPath(petId,stage,pose);
+    return `<img class="pet-svg pet-runtime-image" src="${src}" alt="${def.name}" draggable="false" decoding="async"/>`;
+  }
+  // 其他旧正式图片仍可作为降级，不再作为当前默认伙伴。
   if (window.__PET_IMAGES && window.__PET_IMAGES[petId]) {
     // 先计算装扮
     const P = def.palette;
@@ -148,18 +163,28 @@ export function petSVG(petId, { equip = {}, pose = 'idle', stage = 1 } = {}) {
 }
 
 // 宠物容器（动作通过给 wrapper 加 pet-act-* 类触发）
-export function petNode(petRow, { stage } = {}) {
-  const st = stage || stageOf(petRow.growth || 0).n;
-  const wrap = h('div', { class: 'pet-wrap pet-act-idle', 'data-pet': petRow.petId });
-  wrap.innerHTML = petSVG(petRow.petId, { equip: petRow.equipped || {}, stage: st });
+export function petNode(petRow, { stage, action='idle' } = {}) {
+  const st = stage || petStageNumber(petRow);
+  const wrap = h('div', { class: 'pet-wrap pet-act-idle', 'data-pet': petRow.petId, 'data-stage':String(st), 'data-action':action });
+  if (petRow.petId===PRIMARY_PET_ID) {
+    const img=h('img',{class:'pet-runtime-image',src:petAssetPath(petRow.petId,st,action),alt:petRow.name||'伙伴',draggable:'false',decoding:'async'});
+    img.addEventListener('error',()=>{if(action!=='idle')img.src=petAssetPath(petRow.petId,st,'idle');});
+    wrap.append(img);
+  } else wrap.innerHTML = petSVG(petRow.petId, { equip: petRow.equipped || {}, stage: st });
   return wrap;
 }
 export function petAct(wrap, act, ms = 1600) {
   if (!wrap) return;
-  wrap.classList.remove('pet-act-idle');
-  wrap.classList.add('pet-act-' + act);
+  const action=ACTION_ALIAS[act]||act||'idle';
+  wrap.classList.remove(...[...wrap.classList].filter(c=>c.startsWith('pet-act-')));
+  wrap.classList.add('pet-act-' + action);wrap.dataset.action=action;
+  const img=wrap.querySelector('.pet-runtime-image');
+  if(img&&wrap.dataset.pet===PRIMARY_PET_ID){const stage=Number(wrap.dataset.stage)||1;img.src=petAssetPath(PRIMARY_PET_ID,stage,action);img.onerror=()=>{img.onerror=null;img.src=petAssetPath(PRIMARY_PET_ID,stage,'idle');};}
   clearTimeout(wrap._actT);
-  wrap._actT = setTimeout(() => { wrap.classList.remove('pet-act-' + act); wrap.classList.add('pet-act-idle'); }, ms);
+  wrap._actT = setTimeout(() => {
+    wrap.classList.remove(...[...wrap.classList].filter(c=>c.startsWith('pet-act-')));wrap.classList.add('pet-act-idle');wrap.dataset.action='idle';
+    if(img&&wrap.dataset.pet===PRIMARY_PET_ID)img.src=petAssetPath(PRIMARY_PET_ID,Number(wrap.dataset.stage)||1,'idle');
+  }, ms);
 }
 // 漂浮反馈（爱心/音符/星星）
 export function floatFx(container, kind = 'heart', x = 50, y = 40) {

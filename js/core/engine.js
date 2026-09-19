@@ -1,12 +1,13 @@
-// 今天没白过 · 业务引擎：completion_event / 积分流水 / 日上限 / 成长值 / 徽章解锁 / 撤销修正
+// 今天没白过 · 业务引擎：completion_event / 积分流水 / 日上限 / 陪伴值 / 徽章解锁 / 撤销修正
 // 原则：先可靠保存，后庆祝；同一来源不重复发奖（grantOnce 幂等）；余额 = 流水求和。
-import { put, get, del, all, allByIndex, getByIndex, atomically, loadKV, saveKV, patchKV } from './db.js';
-import { BADGES, POINTS, GROWTH, STAGES, stageOf, PETS, shopById, catName, isUnlocked, unlockText } from './catalog.js';
+import { put, get, del, all, allByIndex, getByIndex, atomically, loadKV, saveKV, patchKV, db } from './db.js';
+import { BADGES, POINTS, GROWTH, STAGES, stageOf, PETS, PRIMARY_PET_ID, CROWN_ITEM_ID, COMPANION_CONFIG, shopById, catName, isUnlocked, unlockText } from './catalog.js';
 import { todayKey, dateKey, weekKeyOf, monthKeyOf, uid, fmtMin, debounce } from './util.js';
 import { VALID_KINDS, isLifeEvent, aggregatePeriod } from './analytics.js';
 import { buyAtomic, consumeAtomic, redeemCustomRewardAtomic } from './inventory-ops.js';
 import * as fx from './fx.js';
 import * as sound from './sound.js';
+import { migrateCompanionV25, companionStage, coronationReady, rememberPetEvent, applyInteractionState, interactionReward, syncCompanionMemories, validatePartnerInvite } from './companion.js';
 
 export const DATA_EVENT = 'tjmbg:data';
 function emit() { window.dispatchEvent(new CustomEvent(DATA_EVENT)); }
@@ -17,6 +18,7 @@ const KIND_CAP = { task: POINTS.task.capPerDay, habit: POINTS.habit.capPerDay, q
 
 export async function initEngine() {
   _caps = { date: null, all: 0, byKind: {} };
+  await migrateCompanionV25();
   const rows = await all('points');
   _bal = rows.reduce((a, r) => a + r.delta, 0);
   await recomputeStats();
@@ -94,36 +96,46 @@ export async function reverseSource(sourceEventId, reason = '撤销修正') {
 // ---- 宠物成长 ----
 export async function getActivePet() {
   const pets = await all('pets');
-  if (!pets.length) return null;
+  if (!pets.length || !pets.some(p=>p.petId===PRIMARY_PET_ID)) await migrateCompanionV25();
+  const fresh = await all('pets');
   const meta = await loadKV('app_meta');
-  return pets.find((p) => p.petId === meta.activePet) || pets[0];
+  return fresh.find((p) => p.petId === meta.activePet) || fresh.find(p=>p.petId===PRIMARY_PET_ID) || fresh[0] || null;
 }
-export async function grantGrowth(amount, { exempt = false, reason = '', dateKey = todayKey() } = {}) {
+export async function grantGrowth(amount, { exempt = false, reason = '', dateKey = todayKey(), interaction = null } = {}) {
   if (amount <= 0) return 0;
   const pet = await getActivePet();
   if (!pet) return 0;
   if (!exempt) {
     const logs = await allByIndex('petlog', 'dateKey', dateKey);
-    const used = logs.filter((l) => !l.exempt).reduce((a, l) => a + l.amount, 0);
+    const used = logs.filter((l) => !l.exempt).reduce((a, l) => a + Number(l.amount||0), 0);
     amount = Math.min(amount, Math.max(0, GROWTH.capPerDay - used));
     if (amount <= 0) return 0;
   }
-  await put('petlog', { id: uid('gl'), dateKey, amount, exempt, reason, ts: Date.now() });
-  const before = stageOf(pet.growth).n;
-  pet.growth += amount;
-  const after = stageOf(pet.growth).n;
+  const before = stageOf(pet.growth || 0, !!pet.coronationAt).n;
+  pet.growth = Math.max(0, Number(pet.growth)||0) + amount;
+  const after = stageOf(pet.growth, !!pet.coronationAt).n;
+  pet.stageUnlocked ||= {1:pet.ownedAt||Date.now()};
+  if (after > before) pet.stageUnlocked[after] ||= Date.now();
+  await put('petlog', { id: uid('gl'), dateKey, amount, exempt, reason, interaction, ts: Date.now() });
   await put('pets', pet);
   if (after > before) {
-    fx.queueCele({ type: 'stage', stage: after, stageName: STAGES[after - 1].name, petName: pet.name || '宠物' });
+    await rememberPetEvent({petId:pet.petId,id:`mem:${pet.petId}:stage_${after}`,kind:`stage_${after}`,title:`进入 Lv.${after} ${STAGES[after-1].name}`,note:'你们的陪伴又走到了新的阶段。'});
+    fx.queueCele({ type: 'stage', stage: after, stageName: STAGES[after - 1].name, petName: pet.name || '伙伴' });
     statsDirty();
   }
   return amount;
 }
-export async function petInteract({ food = false, toy = false, touch = false, itemId = null }) {
-  const ev = { id: uid('pe'), ts: Date.now(), dateKey: todayKey(), kind: 'pet', refId: itemId, meta: { food, toy, touch } };
+export async function petInteract({ kind = null, food = false, toy = false, touch = false, itemId = null }) {
+  const interaction = kind || (food ? 'feed' : toy ? 'play' : touch ? 'touch' : 'encourage');
+  const pet = await getActivePet();
+  if (!pet) return { err:'还没有伙伴' };
+  const ev = { id: uid('pe'), ts: Date.now(), dateKey: todayKey(), kind: 'pet', refId: itemId, meta: { food:interaction==='feed', toy:interaction==='play', touch:interaction==='touch', interaction } };
   await put('events', ev);
+  const reward = await interactionReward(interaction, itemId, ev.dateKey);
+  const state = await applyInteractionState(pet, interaction, itemId);
+  const growth = reward.amount ? await grantGrowth(reward.amount, { reason:'伙伴互动', dateKey:ev.dateKey, interaction }) : 0;
   statsDirty();
-  return ev;
+  return { ok:true, event:ev, growth, capped:reward.capped || (reward.amount>0 && growth===0), discovered:state.discovered, status:state.status };
 }
 
 // ---- 统一完成事件 ----
@@ -353,9 +365,10 @@ export async function purchaseItem(requested) {
   const item = shopById(requested?.id);
   if (!item || !Number.isFinite(item.price) || item.price < 0) return { err: '商品无效' };
   const S = await computeStats();
-  if (!isUnlocked(item, { maxStage: S.petMaxStage || 1, badgeCount: S.badgeCount || 0, seriesComplete: S.seriesComplete || 0 })) {
-    return { err: '商品尚未解锁：' + (unlockText(item) || '条件未满足') };
-  }
+  const activePet = await getActivePet();
+  const unlockCtx = { maxStage:S.petMaxStage||1, badgeCount:S.badgeCount||0, seriesComplete:S.seriesComplete||0, coronationReady:coronationReady(activePet) };
+  if (!isUnlocked(item, unlockCtx)) return { err: '商品尚未解锁：' + (unlockText(item) || '条件未满足') };
+  if (item.id===CROWN_ITEM_ID && activePet?.coronationAt) return { err:'伙伴已经完成加冕，不需要重复兑换' };
   try {
     const result = await buyAtomic(item);
     if (result.err) return result;
@@ -371,9 +384,11 @@ export async function useConsumable(itemId) {
 }
 export async function usePetItem(itemId) {
   const item = shopById(itemId);
-  if (!item || !['food','toy'].includes(item.cat)) return { err: '这件物品不能用于宠物互动' };
-  if (!(await getActivePet())) return { err: '还没有伙伴' };
-  const ev = { id: uid('pe'), ts: Date.now(), dateKey: todayKey(), kind: 'pet', refId: itemId, meta: { food:item.cat==='food',toy:item.cat==='toy',touch:false } };
+  if (!item || !['food','toy'].includes(item.cat)) return { err: '这件物品不能用于伙伴互动' };
+  const pet = await getActivePet();
+  if (!pet) return { err: '还没有伙伴' };
+  const interaction = item.cat === 'food' ? 'feed' : 'play';
+  const ev = { id: uid('pe'), ts: Date.now(), dateKey: todayKey(), kind: 'pet', refId: itemId, meta: { food:item.cat==='food',toy:item.cat==='toy',touch:false,interaction } };
   if (item.type === 'consumable') {
     if (!(await consumeAtomic(itemId, ev))) return { err: '道具已用完，请重新选择' };
   } else {
@@ -381,8 +396,32 @@ export async function usePetItem(itemId) {
     if (!inv || inv.qty <= 0) return { err: '尚未拥有该玩具' };
     await put('events',ev);
   }
-  statsDirty();return { ok:true,item,event:ev };
+  const reward = await interactionReward(interaction, itemId, ev.dateKey);
+  const state = await applyInteractionState(pet, interaction, itemId);
+  const growth = reward.amount ? await grantGrowth(reward.amount, { reason:item.cat==='food'?'喂食伙伴':'陪伙伴玩耍', dateKey:ev.dateKey, interaction }) : 0;
+  statsDirty();return { ok:true,item,event:ev,growth,capped:reward.capped || (reward.amount>0 && growth===0),discovered:state.discovered,status:state.status };
 }
+export async function coronateActivePet() {
+  const pet = await getActivePet();
+  if (!pet) return { err:'还没有伙伴' };
+  if (pet.coronationAt) return { err:'已经完成加冕' };
+  if (!coronationReady(pet)) return { err:`陪伴值达到 ${COMPANION_CONFIG.coronationGrowth} 后才能加冕` };
+  const now=Date.now(), dk=todayKey();
+  const tx=db().transaction(['inventory','pets','events','pet_memories'],'readwrite');
+  const inventory=tx.objectStore('inventory'), pets=tx.objectStore('pets'), memories=tx.objectStore('pet_memories'), events=tx.objectStore('events');
+  const inv=await new Promise((resolve,reject)=>{const req=inventory.get(CROWN_ITEM_ID);req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});
+  if (!inv || inv.qty<=0) { try{tx.abort();}catch{} return { err:'还没有加冕果实，请先去商城兑换' }; }
+  if (inv.qty===1) inventory.delete(CROWN_ITEM_ID); else inventory.put({...inv,qty:inv.qty-1,lastAt:now});
+  pet.coronationAt=now;pet.stageUnlocked ||= {1:pet.ownedAt||now};pet.stageUnlocked[4]=now;pet.status={id:'荣耀',text:'今天完成了特别的加冕仪式。',updatedAt:now};
+  pets.put(pet);
+  events.put({id:uid('pe'),ts:now,dateKey:dk,kind:'pet',refId:CROWN_ITEM_ID,meta:{coronation:true,interaction:'coronation'}});
+  memories.put({id:`mem:${pet.petId}:coronation`,petId:pet.petId,kind:'coronation',title:'完成加冕',note:'用加冕果实完成了纪念期的成长仪式。',ts:now,dateKey:dk,meta:{itemId:CROWN_ITEM_ID}});
+  await new Promise((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onabort=()=>reject(tx.error||new Error('加冕未完成'));tx.onerror=()=>reject(tx.error||new Error('加冕保存失败'));});
+  fx.queueCele({type:'stage',stage:4,stageName:STAGES[3].name,petName:pet.name||'伙伴'});sound.play('badge');statsDirty();emit();
+  await syncCompanionMemories(pet);
+  return { ok:true, pet };
+}
+
 export async function equipItem(petRow, slot, itemId) {
   petRow.equipped = petRow.equipped || {};
   if (itemId) petRow.equipped[slot] = itemId;
@@ -394,6 +433,7 @@ export async function claimPet(petId) {
   const ex = await get('pets', petId);
   if (ex) return { err: '已经领取过这只伙伴' };
   const def = PETS.find((p) => p.petId === petId);
+  if (def?.inviteOnly) return { err: '该伙伴需要邀请号解锁' };
   if (def && def.unlock) {
     if (!_S) return { err: '数据尚未就绪' };
     if (def.unlock.badges && (_S.badgeCount || 0) < def.unlock.badges) return { err: `还需解锁 ${def.unlock.badges - (_S.badgeCount || 0)} 枚徽章` };
@@ -405,6 +445,15 @@ export async function claimPet(petId) {
   statsDirty();
   return { ok: true };
 }
+export async function claimPetWithInvite(petId, code) {
+  const def=PETS.find(p=>p.petId===petId);
+  if(!def?.inviteOnly) return {err:'该伙伴不使用邀请号解锁'};
+  if(!validatePartnerInvite(code,petId)) return {err:'邀请号无效或该伙伴尚未开放'};
+  const ex=await get('pets',petId);if(ex){await patchKV('app_meta',{activePet:petId});return {ok:true,pet:ex};}
+  const now=Date.now(),row={petId,name:'',growth:0,equipped:{},ownedAt:now,coronationAt:null,status:null,preferences:{food:[],toy:[],interaction:[]},stageUnlocked:{1:now}};
+  await put('pets',row);await patchKV('app_meta',{activePet:petId});statsDirty();return {ok:true,pet:row};
+}
+
 export async function savePetName(petRow, name) {
   petRow.name = name.trim().slice(0, 12);
   await put('pets', petRow);
@@ -435,7 +484,7 @@ export async function computeStats() {
     goalCreated: goals.length, goalDone: 0, milestoneDone: 0, goalWith5StepsDone: 0,
     ledgerDays: new Set(), ledgerCount: 0, budgetSet: Object.keys(settings.ledgerBudget || {}).length > 0,
     ledgerReviewMonths: new Set(),
-    petOwned: pets.length > 0, petFoodUsed: false, petToyUsed: false, petInteractions: 0, petMaxStage: 1,
+    petOwned: pets.length > 0, petFoodUsed: false, petToyUsed: false, petInteractions: 0, petMaxStage: 1, petCoronationReady:false, petCoronated:false,
     shopPurchases: 0, outfitEquipped: false, furniturePlaced: false, permItems: 0, showcaseCount: showcase.length, seriesComplete: 0,
     months: new Set(), days: new Set(), dayCounts: {}, cats: new Set(), badgeCount: 0,
     seasons: { spring: false, summer: false, autumn: false, winter: false },
@@ -484,7 +533,9 @@ export async function computeStats() {
   }
   for (const p of pets) {
     if (p.name) S.petNamed = true;
-    S.petMaxStage = Math.max(S.petMaxStage, stageOf(p.growth || 0).n);
+    const pst=stageOf(p.growth || 0, !!p.coronationAt);
+    S.petMaxStage = Math.max(S.petMaxStage, pst.n);
+    if (p.petId===PRIMARY_PET_ID) { S.petCoronationReady = coronationReady(p); S.petCoronated = !!p.coronationAt; }
     const eq = p.equipped || {};
     if (eq.head || eq.neck || eq.body) S.outfitEquipped = true;
   }
@@ -551,16 +602,19 @@ export async function todaySummary(dk = todayKey()) {
 }
 
 // ---- 建档 ----
-export async function finishOnboard({ account, nickname, petId, petName }) {
-  await patchKV('profile', { account, nickname: nickname || account });
-  await put('pets', { petId, name: petName || '', growth: 0, equipped: {}, ownedAt: Date.now() });
-  await patchKV('app_meta', { onboarded: true, createdAt: Date.now(), activePet: petId });
+export async function finishOnboard({ account, nickname, petId = PRIMARY_PET_ID, petName }) {
+  const now=Date.now();
+  const chosenName=(petName||'').trim().slice(0,12);
+  await patchKV('profile', { account, nickname: nickname || account, petName:chosenName });
+  await put('pets', { petId:PRIMARY_PET_ID, name:chosenName, growth:0, equipped:{}, ownedAt:now, coronationAt:null, status:null, preferences:{food:[],toy:[],interaction:[]}, stageUnlocked:{1:now} });
+  await patchKV('app_meta', { onboarded:true, createdAt:now, activePet:PRIMARY_PET_ID, companionMigration:1, schemaVersion:2 });
+  await rememberPetEvent({petId:PRIMARY_PET_ID,id:`mem:${PRIMARY_PET_ID}:first_meet`,kind:'first_meet',title:'第一次相遇',note:'从这一天开始，你们成为了彼此的伙伴。',ts:now});
   const p = await grantOnce('welcome', { delta: POINTS.onboard.delta, reason: '建档欢迎奖励', kind: 'onboard', cls: 'milestone' });
   await recomputeStats();
   return { welcome: p };
 }
 export async function clearAllForReset() {
-  const names = ['kv', 'tasks', 'habits', 'habit_logs', 'goals', 'wishes', 'quick_records', 'focus_sessions', 'checklists', 'journal', 'photos', 'ledger', 'events', 'points', 'badges', 'pets', 'petlog', 'inventory', 'custom_rewards', 'reviews'];
+  const names = ['kv', 'tasks', 'habits', 'habit_logs', 'goals', 'wishes', 'quick_records', 'focus_sessions', 'checklists', 'journal', 'photos', 'ledger', 'events', 'points', 'badges', 'pets', 'petlog', 'pet_memories', 'inventory', 'custom_rewards', 'reviews'];
   const { clearEverything } = await import('./db.js');
   await clearEverything();
   _bal = 0; _caps = { date: null, all: 0, byKind: {} }; _S = null;

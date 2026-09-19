@@ -12,7 +12,7 @@ export function buyAtomic(item){
       req.onsuccess=()=>{
         try {
         const owned=req.result;
-        if(item.type==='perm'&&owned?.qty>0){result={err:'永久物品已拥有，不能重复兑换'};return;}
+        if((item.type==='perm'||item.unique)&&owned?.qty>0){result={err:item.unique?'这件成长道具已经拥有':'永久物品已拥有，不能重复兑换'};return;}
         if(balance<item.price){result={err:'积分不足'};return;}
         const now=Date.now(),row={id:uid('pt'),dedupe:uid('buy'),ts:now,dateKey:todayKey(),delta:-item.price,reason:`兑换「${item.name}」`,kind:'purchase',cls:'purchase',sourceEventId:null};
         const inv={...(owned||{itemId:item.id,firstAt:now}),qty:(owned?.qty||0)+1,lastAt:now};

@@ -1,6 +1,6 @@
 // 今天没白过 · 应用外壳：启动 / 路由 / 底部导航 / 全局“＋” / 静音 / PWA
 import { initDB, loadKV, patchKV } from './core/db.js';
-import { initEngine, DATA_EVENT, balance } from './core/engine.js';
+import { initEngine, DATA_EVENT, balance, getActivePet, savePetName } from './core/engine.js';
 import { initArt, setBadgeIndex, setShopIndex } from './core/art.js';
 import { BADGES, SHOP } from './core/catalog.js';
 import { h, qs, icon, todayKey, fmtCN, greeting, uid } from './core/util.js';
@@ -49,6 +49,7 @@ async function boot() {
     }
     status?.ready();
     globalListeners();
+    setTimeout(() => { promptCompanionNameIfNeeded().catch(error => console.warn('伙伴命名提示未完成', error)); }, 220);
     registerPWA(); // Optional, deliberately not awaited.
   } catch (error) {
     console.error(error);
@@ -56,6 +57,22 @@ async function boot() {
     else app.replaceChildren(h('section', { class:'card' }, h('p',null,'打开未完成。已保存的数据没有被清空。'),
       h('button',{class:'btn btn-primary',onclick:()=>location.reload()},'重新打开')));
   }
+}
+
+
+async function promptCompanionNameIfNeeded() {
+  const pet = await getActivePet().catch(() => null);
+  if (!pet || String(pet.name || '').trim()) return;
+  const values = await fx.formDlg({
+    title: '给你的伙伴起个名字', submitLabel: '记住这个名字',
+    fields: [{ key:'name', label:'名字', type:'text', placeholder:'1–12 个字', required:true }],
+  });
+  const name = String(values?.name || '').trim().slice(0, 12);
+  if (!name) return;
+  await savePetName(pet, name);
+  await patchKV('profile', { petName:name });
+  fx.toast('从今天起，就这样叫它啦', { ic:'heart' });
+  if (shellBuilt) route(activeRouteSpec || currentRoute);
 }
 
 function applyTheme() {

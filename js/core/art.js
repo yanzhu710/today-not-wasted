@@ -116,11 +116,10 @@ export async function initArt() {
     _overrides = new Set(j.files || []);
   } catch { _overrides = new Set(); }
   finally { clearTimeout(timeout); }
-  // 标记哪些宠物有正式图片
+  // 标记哪些伙伴有正式图片；v2.5.0 的默认伙伴使用分阶段动作资源。
   window.__PET_IMAGES = {};
-  for (const p of ['maotuan', 'lili', 'mituan']) {
-    if (_overrides.has(`pets/${p}.png`)) window.__PET_IMAGES[p] = true;
-  }
+  if (_overrides.has('pets/ali/ali_lv1_idle.png')) window.__PET_IMAGES.ali = true;
+  for (const p of ['maotuan','lili','mituan']) if (_overrides.has(`pets/${p}.png`)) window.__PET_IMAGES[p] = true;
   _artInit = true;
 }
 const hasFile = (rel) => _artInit && _overrides.has(rel);

@@ -81,7 +81,7 @@ export async function drawShareCanvas(data,opts={}) {
     y=Math.max(y+15,825);label(c,'新收藏',58,y,23,'#5C7151',700);y+=20;
     badges.forEach((im,i)=>{contained(c,im,64+i*180,y,140,140);paragraph(c,data.newBadges[i].name,66+i*180,y+165,160,17,2);});
   }
-  if(!short&&pet){label(c,`${data.activePet.name||data.petDef?.name||'伙伴'} · ${stageOf(data.activePet.growth||0).name}`,58,h-165,21,'#5C7151',600);}
+  if(!short&&pet){label(c,`${data.activePet.name||data.petDef?.name||'伙伴'} · ${stageOf(data.activePet.growth||0,!!data.activePet.coronationAt).name}`,58,h-165,21,'#5C7151',600);}
   c.strokeStyle='#D6DCCB';c.beginPath();c.moveTo(58,h-99);c.lineTo(w-58,h-99);c.stroke();
   label(c,'把普通日子，收进值得珍藏的生活。',58,h-66,short?16:20,'#78816C');
   return canvas;

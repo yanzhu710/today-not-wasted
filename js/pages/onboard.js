@@ -1,17 +1,16 @@
 import { APP_VERSION } from '../core/appmeta.js';
-// 今天没白过 · 首次建档流程：欢迎 → 建档（账户名/密码/昵称/头像）→ 选择宠物 → 完成
+// 今天没白过 · 首次建档流程：欢迎 → 建档（账户名/密码/昵称/头像）→ 给伙伴命名 → 完成
 import { loadKV, saveKV, put, genId } from '../core/db.js';
-import { PETS, POINTS } from '../core/catalog.js';
+import { PRIMARY_PET_ID, POINTS } from '../core/catalog.js';
 import { finishOnboard } from '../core/engine.js';
 import { h, uid, qs, icon } from '../core/util.js';
-import { petSVG } from '../core/pets.js';
 import { formDlg, toast, queueSettle } from '../core/fx.js';
 import { cropAndSave, fillAvatar, chooseAvatar } from '../core/avatar.js';
 import * as sound from '../core/sound.js';
 
 export function renderOnboard(container, onDone) {
   let step = 0;
-  const state = { account: '', nickname: '', petId: PETS[0].petId, petName: '', avatarId: null };
+  const state = { account: '', nickname: '', petId: PRIMARY_PET_ID, petName: '', avatarId: null };
   const root = h('div', { class: 'onboard' });
   container.innerHTML = '';
   container.append(root);
@@ -31,7 +30,7 @@ export function renderOnboard(container, onDone) {
         h('div', { class: 'ob-done-list' },
           obRow('lock', '这是本机档案', '所有数据只保存在这台设备的浏览器里，不需要真实账号。'),
           obRow('gift', '全程免费', '没有充值、广告和付费道具，积分只来自你的真实生活。'),
-          obRow('pet', '选一只伙伴', '它会陪你记录生活、慢慢成长，不会因为几天没来而离开。'))),
+          obRow('pet', '认识你的伙伴', '第一次见面时由你亲自给它起名字。它会陪你记录生活、慢慢长大。'))),
       h('div', { class: 'ob-foot' },
         h('button', { class: 'btn btn-primary btn-block', onclick: () => { sound.play('tap'); next(); } }, '开始体验'),
         h('div', { class: 'ob-note' }, '制作人：yanzhu · v' + APP_VERSION)));
@@ -88,34 +87,31 @@ export function renderOnboard(container, onDone) {
           }, '下一步'))));
   }
   function petPage() {
-    const nameInp = h('input', { class: 'input', placeholder: '给它起个名字（可稍后再起）', maxlength: '12', value: state.petName });
-    let sel = state.petId;
-    const cards = h('div', { class: 'ob-pets' },
-      PETS.map((p) => h('button', {
-        class: 'ob-pet' + (p.petId === sel ? ' on' : ''),
-        onclick: (e) => {
-          sel = p.petId; state.petId = sel; sound.play('tap');
-          [...cards.children].forEach((c) => c.classList.toggle('on', c === e.currentTarget));
-        },
-      }, h('div', { class: 'pv' }, h('img', { src: './assets/pets/' + p.petId + '.png', alt: p.name, style: 'width:100%;height:100%;object-fit:contain' })), h('div', { class: 'nm' }, p.name), h('div', { class: 'sp' }, p.species))));
+    const nameInp = h('input', { class: 'input', placeholder: '例如：小白 / 栗子 / 布布', maxlength: '12', value: state.petName, autocomplete:'off' });
+    const errBox=h('div',{class:'form-hint',style:'color:var(--danger);min-height:18px'});
+    const petImg=h('img',{src:'./assets/pets/ali/ali_lv1_idle.png',alt:'你的新伙伴',class:'ob-primary-pet-image',draggable:'false',decoding:'async'});
     return h('div', { class: 'rise' },
       h('div', { class: 'ob-dots' }, dot(1), dot(2), dot(3)),
-      h('div', { class: 'ob-hero', style: 'padding-top:4px' }, h('div', { class: 'ob-title', style: 'font-size:20px' }, '选择你的初始伙伴'), h('div', { class: 'ob-slogan' }, '另外两只以后也能免费领取')),
-      cards,
-      h('div', { class: 'sec-gap' }),
-      nameInp,
+      h('div', { class: 'ob-hero', style: 'padding-top:4px' },
+        h('div', { class: 'ob-title', style: 'font-size:22px' }, '给你的伙伴起个名字'),
+        h('div', { class: 'ob-slogan' }, '这是你们第一次见面。以后也可以随时改名。')),
+      h('section',{class:'ob-primary-pet-card'},petImg,h('span',{class:'tag tag-pri'},'Lv.1 初遇期'),h('p',null,'从今天开始，它会陪你把普通日子慢慢收集起来。')),
+      h('div',{class:'form-list'},
+        h('div',{class:'form-item'},h('span',{class:'form-label'},'伙伴名字'),nameInp,h('span',{class:'form-hint'},'1–12 个字，只保存在这台设备上。'),errBox)),
       h('div', { class: 'ob-foot' },
         h('div', { class: 'btn-row' },
           h('button', { class: 'btn btn-ghost', onclick: prev }, '返回'),
           h('button', {
             class: 'btn btn-primary', style: 'flex:2', onclick: async () => {
-              state.petId = sel; state.petName = nameInp.value.trim();
+              const petName=nameInp.value.trim();
+              if(!petName){errBox.textContent='先给伙伴起一个名字吧';nameInp.focus();return;}
+              state.petId = PRIMARY_PET_ID; state.petName = petName;
               sound.play('complete');
-              const res = await finishOnboard({ account: state.account, nickname: state.nickname, petId: state.petId, petName: state.petName });
+              const res = await finishOnboard({ account: state.account, nickname: state.nickname, petId: PRIMARY_PET_ID, petName });
               if (state.avatarId) await saveKV('profile', { ...(await loadKV('profile')), avatarId: state.avatarId });
               next(res.welcome);
             },
-          }, '进入今天'))));
+          }, '就叫这个名字'))));
   }
   function donePage(welcome) {
     setTimeout(() => {

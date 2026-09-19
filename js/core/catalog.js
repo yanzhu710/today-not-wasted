@@ -1,4 +1,4 @@
-// 今天没白过 · 种子目录：徽章 120 枚 / 商品 60 件 / 宠物 / 分类 / 清单模板 / 灵感库 / 奖励参数
+// 今天没白过 · 种子目录：徽章 120 枚 / 商品 61 件 / 伙伴 / 分类 / 清单模板 / 灵感库 / 奖励参数
 // 徽章判定函数接收统计对象 S（由 engine.computeStats 生成），返回布尔值。
 // 生活分类 ID：study sport cook tidy health work social finance hobby other
 
@@ -20,7 +20,7 @@ export const catColor = (id) => (
 );
 
 export const LEDGER_OUT = ['餐饮', '交通', '购物', '日用', '住房', '医疗', '学习', '娱乐', '人情', '其他'];
-export const LEDGER_IN = ['工资', '奖金', '兼职', '报销', '礼金', '退款', '其他'];
+export const LEDGER_IN = ['兼职', '报销', '礼金', '退款', '其他'];
 
 // ---- 积分与成长值参数（奖励一致性：全站唯一规则源）----
 export const POINTS = {
@@ -43,25 +43,44 @@ export const GROWTH = {
   milestone: 5, goal: 10, badge: 5, capPerDay: 25,
 };
 export const STAGES = [
-  { n: 1, name: '初见', min: 0 },
-  { n: 2, name: '熟悉', min: 120 },
-  { n: 3, name: '默契', min: 360 },
-  { n: 4, name: '陪伴', min: 720 },
-  { n: 5, name: '同行', min: 1200 },
+  { n: 1, name: '初遇期', min: 0 },
+  { n: 2, name: '熟悉期', min: 120 },
+  { n: 3, name: '亲密期', min: 360 },
+  { n: 4, name: '纪念期', min: 720 },
 ];
-export const stageOf = (g) => { let s = STAGES[0]; for (const st of STAGES) if (g >= st.min) s = st; return s; };
-export const stageProgress = (g) => {
-  const cur = stageOf(g);
+// Lv.4 需要完成加冕；只达到 720 陪伴值时仍停留在 Lv.3 的“待加冕”状态。
+export const stageOf = (g, crowned = false) => {
+  const value = Math.max(0, Number(g) || 0);
+  if (crowned && value >= STAGES[3].min) return STAGES[3];
+  if (value >= STAGES[2].min) return STAGES[2];
+  if (value >= STAGES[1].min) return STAGES[1];
+  return STAGES[0];
+};
+export const stageProgress = (g, crowned = false) => {
+  const value = Math.max(0, Number(g) || 0);
+  const cur = stageOf(value, crowned);
+  if (cur.n === 4) return { cur, next: null, ratio: 1, remain: 0, coronationReady: false };
   const next = STAGES.find((s) => s.n === cur.n + 1);
-  if (!next) return { cur, next: null, ratio: 1, remain: 0 };
-  return { cur, next, ratio: (g - cur.min) / (next.min - cur.min), remain: next.min - g };
+  const remain = Math.max(0, (next?.min || value) - value);
+  return { cur, next, ratio: next ? Math.max(0, Math.min(1, (value - cur.min) / (next.min - cur.min))) : 1, remain, coronationReady: cur.n === 3 && value >= STAGES[3].min && !crowned };
 };
 
-// ---- 宠物 ----
+// ---- 伙伴 ----
+export const PRIMARY_PET_ID = 'ali';
+export const CROWN_ITEM_ID = 'S061';
+export const COMPANION_CONFIG = {
+  interactionDailyCaps: { touch: 3, encourage: 2, feed: 3, play: 2 },
+  interactionGrowth: { touch: 1, encourage: 1, feed: 2, play: 2 },
+  favoriteBonus: 1,
+  coronationGrowth: STAGES[3].min,
+  favoriteFood: 'S005',
+  favoriteToy: 'S020',
+  favoriteInteraction: 'touch',
+};
 export const PETS = [
-  { petId: 'maotuan', name: '团团', species: '奶油猫', desc: '圆润、安静，喜欢晒着太阳打盹。', unlock: null, palette: { body: '#F6EEDF', shade: '#EADFC8', ear: '#E3C9A8', blush: '#F2C4B3', ink: '#5B5348' } },
-  { petId: 'lili', name: '栗栗', species: '棕耳小犬', desc: '活泼、热情，听到“出去玩”会原地转圈。', unlock: { badges: 30 }, unlockText: '累计解锁 30 枚徽章后领取', palette: { body: '#E8C79A', shade: '#D9B384', ear: '#9A6B45', blush: '#F0B9A4', ink: '#5B4A3C' } },
-  { petId: 'mituan', name: '米团', species: '垂耳兔', desc: '温柔、慢热，熟悉之后会主动蹭蹭你。', unlock: { stage: 4 }, unlockText: '任一宠物达到成长阶段4「陪伴」后领取', palette: { body: '#F3EEE9', shade: '#E7DFD6', ear: '#CBB6B6', blush: '#EFC0BE', ink: '#635A56' } },
+  { petId: 'ali', name: '伙伴', species: '暖棕小犬', desc: '它的名字由你决定，也会跟着你慢慢长大。', unlock: null, palette: { body:'#F0D9BE',shade:'#D9B58E',ear:'#B47B55',blush:'#EFB7A7',ink:'#59483A' } },
+  { petId: 'partner2', name: '新伙伴', species: '邀请限定', desc: '新的伙伴还没有正式开放。', inviteOnly: true, unlockText: '需要邀请号解锁', palette: { body:'#EEE9E1',shade:'#DCD6CE',ear:'#CFC6BD',blush:'#E8C6C0',ink:'#655E58' } },
+  { petId: 'partner3', name: '新伙伴', species: '邀请限定', desc: '新的伙伴还没有正式开放。', inviteOnly: true, unlockText: '需要邀请号解锁', palette: { body:'#EEE9E1',shade:'#DCD6CE',ear:'#CFC6BD',blush:'#E8C6C0',ink:'#655E58' } },
 ];
 
 // ---- 生活清单模板 ----
@@ -228,10 +247,10 @@ export const BADGES = [
   B('A084', '伙伴物语', '一起玩', '首次使用互动玩具', 10, (S) => S.petToyUsed),
   B('A085', '伙伴物语', '十次互动', '累计完成10次宠物互动', 15, (S) => S.petInteractions >= 10),
   B('A086', '伙伴物语', '五十次互动', '累计完成50次宠物互动', 30, (S) => S.petInteractions >= 50),
-  B('A087', '伙伴物语', '熟悉彼此', '宠物达到成长阶段2', 25, (S) => S.petMaxStage >= 2),
-  B('A088', '伙伴物语', '默契伙伴', '宠物达到成长阶段3', 40, (S) => S.petMaxStage >= 3),
-  B('A089', '伙伴物语', '长久陪伴', '宠物达到成长阶段4', 70, (S) => S.petMaxStage >= 4),
-  B('A090', '伙伴物语', '一路同行', '宠物达到成长阶段5', 120, (S) => S.petMaxStage >= 5),
+  B('A087', '伙伴物语', '熟悉彼此', '伙伴进入 Lv.2 熟悉期', 25, (S) => S.petMaxStage >= 2),
+  B('A088', '伙伴物语', '亲密伙伴', '伙伴进入 Lv.3 亲密期', 40, (S) => S.petMaxStage >= 3),
+  B('A089', '伙伴物语', '等待加冕', '陪伴值达到纪念期加冕条件', 70, (S) => !!S.petCoronationReady || !!S.petCoronated),
+  B('A090', '伙伴物语', '纪念同行', '完成加冕并进入 Lv.4 纪念期', 120, (S) => !!S.petCoronated),
   // 家园收藏（10）
   B('A091', '家园收藏', '第一件礼物', '首次在商城兑换商品', 10, (S) => S.shopPurchases >= 1),
   B('A092', '家园收藏', '换个样子', '首次装备宠物装扮', 10, (S) => S.outfitEquipped),
@@ -277,15 +296,15 @@ export function badgeRarity(points) {
   return { name: '普通', stars: 0 };
 }
 
-// ---- 商城 60 件 ----
+// ---- 商城 61 件 ----
 // unlock: null=默认可购 / {stage:N} 宠物阶段 / {badges:N} 徽章数 / {series:true} 完成任一系列
 function Sg(id, cat, name, price, type, unlock, desc) { return { id, cat, name, price, type, unlock: unlock || null, desc }; }
 export const SHOP_CATS = [
-  { id: 'food', name: '食物' }, { id: 'toy', name: '玩具' },
+  { id: 'food', name: '食物' }, { id: 'toy', name: '玩具' }, { id: 'growth', name: '成长道具' },
 ];
 export const SHOP = [
-  Sg('S001', 'food', '小鱼饼干', 25, 'consumable', null, '香香脆脆，团团的最爱。'),
-  Sg('S002', 'food', '胡萝卜脆片', 30, 'consumable', null, '咔嚓咔嚓，米团耳朵会立起来。'),
+  Sg('S001', 'food', '小鱼饼干', 25, 'consumable', null, '香香脆脆的小点心。'),
+  Sg('S002', 'food', '胡萝卜脆片', 30, 'consumable', null, '咔嚓咔嚓的清脆小零食。'),
   Sg('S003', 'food', '牛奶布丁', 35, 'consumable', null, '摇摇晃晃的甜点。'),
   Sg('S004', 'food', '莓果酸奶', 40, 'consumable', null, '酸酸甜甜，饭后刚刚好。'),
   Sg('S005', 'food', '蜂蜜吐司', 45, 'consumable', null, '抹上厚厚一层蜂蜜。'),
@@ -315,7 +334,7 @@ export const SHOP = [
   Sg('S029', 'outfit', '邮差小包', 300, 'perm', { stage: 3 }, '里面装着今天的好消息。'),
   Sg('S030', 'outfit', '云朵披肩', 340, 'perm', { badges: 30 }, '软软地披在肩上。'),
   Sg('S031', 'outfit', '月亮皇冠', 420, 'perm', { badges: 60 }, '收藏家的荣耀。'),
-  Sg('S032', 'outfit', '周年纪念礼服', 600, 'perm', { stage: 5 }, '同行的证明。'),
+  Sg('S032', 'outfit', '周年纪念礼服', 600, 'perm', { stage: 4 }, '纪念期的正式装扮。'),
   Sg('S033', 'furniture', '软垫小床', 140, 'perm', null, '宠物休息的固定位置。'),
   Sg('S034', 'furniture', '木头食盆', 150, 'perm', null, '吃饭要有仪式感。'),
   Sg('S035', 'furniture', '矮脚书架', 180, 'perm', null, '放着几本翻旧了的书。'),
@@ -337,13 +356,14 @@ export const SHOP = [
   Sg('S051', 'bg', '夜灯书房', 320, 'perm', { stage: 3 }, '只开一盏台灯的深夜。'),
   Sg('S052', 'bg', '春日庭院', 360, 'perm', { badges: 30 }, '花瓣落在木地板上。'),
   Sg('S053', 'bg', '秋日木屋', 420, 'perm', { badges: 60 }, '落叶堆好了，就等宠物跳进去。'),
-  Sg('S054', 'bg', '星空露营', 500, 'perm', { stage: 5 }, '帐篷外面是整片银河。'),
+  Sg('S054', 'bg', '星空露营', 500, 'perm', { stage: 4 }, '帐篷外面是整片银河。'),
   Sg('S055', 'display', '木纹徽章框', 100, 'perm', null, '把徽章挂在木纹相框里。'),
   Sg('S056', 'display', '奶油徽章框', 120, 'perm', null, '奶油色的柔和衬边。'),
   Sg('S057', 'display', '黄铜徽章框', 160, 'perm', null, '黄铜色，衬珐琅徽章正合适。'),
   Sg('S058', 'display', '胶片回顾框', 180, 'perm', null, '像电影胶片一样的展示框。'),
   Sg('S059', 'display', '手账回顾框', 220, 'perm', { badges: 30 }, '带纸胶带装饰的框。'),
   Sg('S060', 'display', '周年典藏框', 400, 'perm', { badges: 60 }, '最高规格的典藏展示框。'),
+  { ...Sg('S061', 'growth', '加冕果实', 520, 'consumable', { coronationReady: true }, '陪伴值达到最终阶段条件后，用它完成一次特别的成长仪式。'), unique: true, special: 'coronation' },
 ];
 export const shopById = (id) => SHOP.find((s) => s.id === id);
 
@@ -353,6 +373,7 @@ export function unlockText(item) {
   if (item.unlock.stage) return `宠物达到阶段${item.unlock.stage}解锁`;
   if (item.unlock.badges) return `累计解锁${item.unlock.badges}枚徽章后开放`;
   if (item.unlock.series) return '完成任一徽章系列后开放';
+  if (item.unlock.coronationReady) return '陪伴值达到加冕条件后开放';
   return null;
 }
 export function isUnlocked(item, ctx) {
@@ -360,6 +381,7 @@ export function isUnlocked(item, ctx) {
   if (item.unlock.stage) return (ctx.maxStage || 1) >= item.unlock.stage;
   if (item.unlock.badges) return (ctx.badgeCount || 0) >= item.unlock.badges;
   if (item.unlock.series) return (ctx.seriesComplete || 0) >= 1;
+  if (item.unlock.coronationReady) return !!ctx.coronationReady;
   return true;
 }
 

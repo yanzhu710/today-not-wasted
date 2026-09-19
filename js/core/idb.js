@@ -2,7 +2,7 @@
 export function openDB(name, version, upgrade) {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(name, version);
-    req.onupgradeneeded = (e) => upgrade(req.result, e.oldVersion);
+    req.onupgradeneeded = (e) => upgrade(req.result, e.oldVersion, req.transaction);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
