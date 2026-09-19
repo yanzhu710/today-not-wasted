@@ -91,7 +91,7 @@ async function renderCustomRewards(box, ctx) {
     if(r.photoId){const img=h('img',{alt:r.title,loading:'lazy'});art.append(img);loadRewardImage(img,r.photoId);} else art.append(h('span',{class:'reward-sticker-fallback'},icon('gift')));
     grid.append(h('article',{class:'reward-product-card'},art,h('b',null,r.title),h('span',{class:'reward-price'},r.cost?`${r.cost} 积分`:'免费领取'),
       h('button',{class:'btn btn-soft btn-sm reward-exchange-btn',onclick:()=>ctx.navigate('rewards','shop')},'去商城'),
-      h('button',{class:'reward-delete-link','aria-label':'删除奖励',onclick:async()=>deleteCustomReward(r,ctx)},'删除'));
+      h('button',{class:'reward-delete-link','aria-label':'删除奖励',onclick:async()=>deleteCustomReward(r,ctx)},'删除')));
   }
   box.append(section);
 }
