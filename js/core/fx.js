@@ -321,15 +321,23 @@ async function showCele(item) {
     sound.play('goal');
     await new Promise((resolve) => {
       const { ov, finish } = overlay(resolve);
-      const card = h('div', { class: 'cele-card' },
-        h('div', { class: 'cele-kicker' }, '宠物成长'),
-        h('div', { class: 'cele-stage-num' }, `阶段 ${item.stage} · ${item.stageName}`),
-        h('div', { class: 'cele-name' }, `${item.petName} 和你的陪伴又加深了一点`),
-        h('div', { class: 'cele-sub' }, item.sub || '新的表现与解锁正在等待'));
+      const stage = Math.max(1, Math.min(4, Number(item.stage)||1));
+      const crown = stage === 4;
+      const card = h('div', { class: 'cele-card evolve-reveal stage-'+stage },
+        h('div', { class: 'evolve-halo', 'aria-hidden':'true' }, h('span',null), h('span',null), h('span',null)),
+        h('div', { class: 'cele-kicker' }, crown ? '纪念加冕' : '伙伴进化'),
+        h('div', { class: 'evolve-pet-wrap' },
+          h('span',{class:'evolve-ring','aria-hidden':'true'}),
+          h('img',{class:'evolve-pet',src:`./assets/pets/ali/ali_lv${stage}_celebrate.png`,alt:item.petName||'伙伴',draggable:'false'}),
+          crown ? h('span',{class:'evolve-crown','aria-hidden':'true'},'♛') : null),
+        h('div', { class: 'cele-stage-num' }, `Lv.${stage} · ${item.stageName}`),
+        h('div', { class: 'cele-name' }, `${item.petName} 和你的陪伴进入了新的阶段`),
+        h('div', { class: 'cele-sub' }, item.sub || (crown?'这一刻值得认真收藏。':'新的形态和闪卡已经解锁。')));
       ov.append(card);
       requestAnimationFrame(() => ov.classList.add('show'));
-      particles(ov, ['#D8A94D', '#D78367', '#F2D98C'], 20);
-      setTimeout(finish, 2800);
+      particles(ov, crown?['#FFF4C7','#E7B85A','#F2D98C','#FFFFFF']:['#D8A94D','#D78367','#F2D98C','#A8C4A0'], crown?38:30);
+      try { navigator.vibrate?.(crown?[80,40,120,50,180]:[50,35,80]); } catch {}
+      setTimeout(finish, crown?3800:3300);
     });
   } else if (item.type === 'settle') {
     sound.play('points');

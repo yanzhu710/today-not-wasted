@@ -262,28 +262,33 @@ export function shopArt(itemId) {
 }
 export function setShopIndex(items) { window.__SHOP_INDEX = Object.fromEntries(items.map((i) => [i.id, i])); }
 
-// ---- 心情脸 ----
-const _moodCache = new Map();
+// ---- 心情与伙伴状态表情（v2.5.1：正式 PNG，不再现场拼 SVG） ----
+const MOOD_PNG = Object.freeze({
+  great: 'surprise',
+  good: 'happy',
+  ok: 'calm',
+  low: 'sleepy',
+  bad: 'sad',
+});
+const COMPANION_MOOD_PNG = Object.freeze({
+  开心: 'happy',
+  安静: 'calm',
+  安心: 'calm',
+  满足: 'happy',
+  元气: 'active',
+  活泼: 'active',
+  困困: 'sleepy',
+  委屈: 'sad',
+  惊喜: 'surprise',
+  荣耀: 'surprise',
+});
 export function moodArt(moodId) {
-  if (_moodCache.has(moodId)) return _moodCache.get(moodId);
-  const ink = '#4A423C';
-  let face = '';
-  if (moodId === 'great') {
-    face = ci(40, 42, 3.6, ink) + ci(60, 42, 3.6, ink) + pa('M36 56c4 8 9 12 14 12s10-4 14-12', 'none', `stroke="${ink}" stroke-width="4.2" stroke-linecap="round"`);
-  } else if (moodId === 'good') {
-    face = ci(40, 42, 3.6, ink) + ci(60, 42, 3.6, ink) + pa('M39 57c3 5 7 8 11 8s8-3 11-8', 'none', `stroke="${ink}" stroke-width="4.2" stroke-linecap="round"`);
-  } else if (moodId === 'ok') {
-    face = ci(40, 42, 3.6, ink) + ci(60, 42, 3.6, ink) + ln('M39 60h22', 4.2, ink);
-  } else if (moodId === 'low') {
-    face = ci(40, 44, 3.6, ink) + ci(60, 44, 3.6, ink) + pa('M39 64c3-5 7-8 11-8s8 3 11 8', 'none', `stroke="${ink}" stroke-width="4.2" stroke-linecap="round"`);
-  } else {
-    face = ln('M35 38l9 6M44 38l-9 6', 3.2, ink) + ln('M56 38l9 6M65 38l-9 6', 3.2, ink) + pa('M39 64c3-5 7-8 11-8s8 3 11 8', 'none', `stroke="${ink}" stroke-width="4.2" stroke-linecap="round"`);
-  }
-  const fill = { great: '#F5D66B', good: '#A8C4A0', ok: '#BCC2CC', low: '#9FB4D0', bad: '#E8A0A4' }[moodId] || '#BCC2CC';
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">${ci(50, 50, 38, fill)}${face}</svg>`;
-  const uri = dataUri(svg);
-  _moodCache.set(moodId, uri);
-  return uri;
+  const key = MOOD_PNG[moodId] || 'calm';
+  return `./assets/ui/moods/${key}.png`;
+}
+export function companionMoodArt(statusId) {
+  const key = COMPANION_MOOD_PNG[statusId] || 'calm';
+  return `./assets/ui/moods/${key}.png`;
 }
 
 // ---- 节假日标记配色（供月历使用）----

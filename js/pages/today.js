@@ -9,7 +9,7 @@ import { queueSettle, actionSheet, confirmDlg, toast } from '../core/fx.js';
 import { openFocus } from './focus.js';
 import { habitDueOn, habitFreqLabel } from './plan.js';
 import * as sound from '../core/sound.js';
-import { badgeArt } from '../core/art.js';
+import { badgeArt, moodArt } from '../core/art.js';
 import { openSharePanel } from '../core/share.js';
 import { timeRangeField } from '../ui/time-range.js';
 
@@ -33,6 +33,8 @@ export async function renderToday(view, ctx) {
   const done = todayTasks.filter(t => t.done);
   const active = pets.find(p => p.petId === appMeta.activePet) || pets[0];
   const def = PETS.find(p => p.petId === active?.petId);
+  const moodEntry = [...journalRows].sort((a,b)=>(Number(b.ts)||0)-(Number(a.ts)||0))[0] || null;
+  const todayMoodSrc = moodEntry?.mood ? moodArt(moodEntry.mood) : null;
   const { petFigure, petResponse } = await import('../ui/paper.js');
   view.replaceChildren();
   view.classList.add('paper-today', 'paper-reference-page');
@@ -40,7 +42,7 @@ export async function renderToday(view, ctx) {
   const primaryActions = [
     { ic:'quick', label:'记录', createLabel:'记一件小事', action:()=>quickRecordDialog(), href:'footprint?tab=timeline&filter=quick' },
     { ic:'focus', label:'专注', createLabel:'开始专注', action:()=>openFocus(), href:'footprint?tab=timeline&filter=focus' },
-    { ic:'heart', label:'心情', createLabel:'写下心情', action:async()=> (await import('./footprint.js')).journalDialog(), href:'footprint?tab=timeline&filter=journal' },
+    { ic:'heart', label:'心情', createLabel:'写下心情', moodSrc:todayMoodSrc, action:async()=> (await import('./footprint.js')).journalDialog(), href:'footprint?tab=timeline&filter=journal' },
     { ic:'ledger', label:'记账', createLabel:'记一笔账', action:()=>quickLedgerDialog(), href:'footprint?tab=timeline&filter=ledger' },
   ];
   const openPrimaryAction = item => actionSheet(item.label,[
@@ -49,7 +51,7 @@ export async function renderToday(view, ctx) {
   ]);
   const actionDock = h('div',{class:'today-hero-actions','aria-label':'今天快捷入口'},
     primaryActions.map((item,i)=>h('button',{class:`today-hero-action tone-${i}`,'aria-label':`${item.label}：新建或查看记录`,onclick:()=>openPrimaryAction(item)},
-      h('span',{class:'today-hero-action-icon'},icon(item.ic)),h('b',null,item.label),h('small',null,'新建 / 记录'))));
+      h('span',{class:'today-hero-action-icon'},item.moodSrc?h('img',{class:'today-action-mood',src:item.moodSrc,alt:'今日心情'}):icon(item.ic)),h('b',null,item.label),h('small',null,'新建 / 记录'))));
 
   if (active && def) {
     const progress = stageProgress(active.growth || 0, !!active.coronationAt);
@@ -61,11 +63,11 @@ export async function renderToday(view, ctx) {
       sound.play('pet'); petResponse(figure, bubble, '我在呢，慢慢来就好。', 'touch');
       if(r?.growth>0)toast(`陪伴值 +${r.growth}`,{ic:'heart'});
     }});
-    const scene = h('div', { class: 'ref-hero-scene ref-hero-scene-clean' },
-      h('span', { class: 'ref-leaf leaf-a', 'aria-hidden':'true' }),
-      h('span', { class: 'ref-leaf leaf-b', 'aria-hidden':'true' }),
-      h('div', { class: 'ref-hero-pet' }, figure),
+    const scene = h('div', { class: 'ref-hero-scene ref-hero-scene-clean today-art-scene' },
+      h('img',{class:'today-art-scene-bg',src:'./assets/ui/companion-scene-bg.jpg',alt:'',draggable:'false',decoding:'async'}),
+      h('div', { class: 'ref-hero-pet today-pet-roam' }, figure),
       bubble,
+      todayMoodSrc?h('div',{class:'today-user-mood','aria-label':'今天的心情'},h('img',{src:todayMoodSrc,alt:moodById(moodEntry.mood)?.name||'今日心情'})):null,
       h('div', { class:'ref-hero-note' }, summary.validEvents ? `今天留下 ${summary.validEvents} 条记录` : '从一件小事开始吧'));
     const hero = h('section', { class:'ref-hero card' },
       scene,
@@ -87,7 +89,7 @@ export async function renderToday(view, ctx) {
       overviewCell('quick',summary.validEvents,'记录'),
       overviewCell('focus',fmtFocusCompact(summary.focusMin),'专注'),
       overviewCell('ledger',todayOutflow(ledgerRows),'支出'),
-      overviewCell('heart',todayMood(journalRows),'心情')));
+      overviewMoodCell(moodEntry)));
 
   const badgeSlot=h('section',{class:'ref-badge-wrap'});
   try {
@@ -128,9 +130,9 @@ export async function renderToday(view, ctx) {
   view.append(h('p',{class:'paper-page-note'},'今天没白过 · 把平凡的日子，过成喜欢的样子。'));
 
   function overviewCell(ic,value,label){return h('div',{class:'ref-overview-cell'},h('span',{class:'ref-overview-icon'},icon(ic)),h('div',null,h('b',null,String(value)),h('small',null,label)));}
+  function overviewMoodCell(row){return h('div',{class:'ref-overview-cell mood-overview'},h('span',{class:'ref-overview-icon mood-overview-icon'},row?.mood?h('img',{src:moodArt(row.mood),alt:moodById(row.mood)?.name||'今日心情'}):icon('heart')),h('div',null,h('b',{class:'mood-overview-value'},row?.mood?'':'—'),h('small',null,'心情')));}
   function fmtFocusCompact(min){if(!min)return '0m';if(min<60)return `${min}m`;const h=Math.floor(min/60),r=min%60;return r?`${h}h${r}m`:`${h}h`;}
   function todayOutflow(rows){const cents=rows.filter(r=>r.type==='out').reduce((n,r)=>n+(Number(r.amount)||0),0);return cents?fmtMoney(cents).replace(/^¥/,''):'0';}
-  function todayMood(rows){const row=rows[0];if(!row?.mood)return '—';return moodById(row.mood)?.name||'已记';}
 }
 
 function refTaskRow(t,tplById,ctx){

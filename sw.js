@@ -1,6 +1,6 @@
-// v2.5.0. All executable dependencies are cached as a unit; artwork is optional.
+// v2.5.1. All executable dependencies are cached as a unit; artwork is optional.
 // Never stores user records, never calls IndexedDB, never clears another app's cache.
-const RELEASE = '2.5.0';
+const RELEASE = '2.5.1';
 const PREFIX = 'tjmbg-app:' + encodeURIComponent(new URL(self.registration.scope).pathname) + ':';
 const CACHE = PREFIX + RELEASE;
 const CORE = [
@@ -99,6 +99,13 @@ const ART = [
   "./assets/cards/runtime/stage2.glb",
   "./assets/cards/runtime/stage3.glb",
   "./assets/cards/runtime/stage4.glb",
+  "./assets/ui/companion-scene-bg.jpg",
+  "./assets/ui/moods/happy.png",
+  "./assets/ui/moods/calm.png",
+  "./assets/ui/moods/sleepy.png",
+  "./assets/ui/moods/active.png",
+  "./assets/ui/moods/sad.png",
+  "./assets/ui/moods/surprise.png",
   "./assets/shop/S061.svg",
   "./icons/apple-touch-icon.png",
   "./icons/icon-512.png",

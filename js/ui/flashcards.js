@@ -16,7 +16,7 @@ const STORIES={
 
 export function renderFlashcards(pet,{onDispose=null}={}){
   const current=stageOf(pet.growth||0,!!pet.coronationAt).n;
-  let selected=Math.max(0,current-1),quality='holo',depth=1,shine=.62,autoFloat=true,disposed=false,viewer=null;
+  let selected=Math.max(0,current-1),quality='holo',depth=1,shine=.34,autoFloat=true,disposed=false,viewer=null;
   const root=h('section',{class:'companion-flashbook','aria-label':'伙伴闪卡收藏'});
   const head=h('div',{class:'companion-flash-head'},
     h('div',null,h('span',{class:'companion-kicker'},'HOLOGRAPHIC ARCHIVE'),h('h2',null,'四阶闪卡'),h('p',null,`已解锁 ${current}/4 张 · 真实 3D 模型`)),
@@ -34,14 +34,14 @@ export function renderFlashcards(pet,{onDispose=null}={}){
     const depthInp=h('input',{class:'input range',type:'range',min:'.7',max:'1.5',step:'.05',value:String(depth)}),shineInp=h('input',{class:'input range',type:'range',min:'0',max:'1',step:'.05',value:String(shine)}),floatInp=h('input',{type:'checkbox',checked:autoFloat});
     const depthOut=h('span',{class:'num'},depth.toFixed(2)+'×'),shineOut=h('span',{class:'num'},Math.round(shine*100)+'%');
     const live=()=>{quality=qualitySel.value;depth=Number(depthInp.value);shine=Number(shineInp.value);autoFloat=!!floatInp.checked;depthOut.textContent=depth.toFixed(2)+'×';shineOut.textContent=Math.round(shine*100)+'%';applyEffects();};
-    qualitySel.onchange=()=>{const preset={soft:.28,holo:.62,deep:.82}[qualitySel.value]??.62;shineInp.value=String(preset);live();};depthInp.oninput=live;shineInp.oninput=live;floatInp.onchange=live;
+    qualitySel.onchange=()=>{const preset={soft:.14,holo:.34,deep:.52}[qualitySel.value]??.34;shineInp.value=String(preset);live();};depthInp.oninput=live;shineInp.oninput=live;floatInp.onchange=live;
     openModal({title:'闪卡效果',content:h('div',{class:'form-list'},
       h('div',{class:'form-item'},h('span',{class:'form-label'},'卡面质感'),qualitySel),
       h('div',{class:'form-item'},h('span',{class:'form-label'},'透视深度 · ',depthOut),depthInp),
       h('div',{class:'form-item'},h('span',{class:'form-label'},'高光强度 · ',shineOut),shineInp),
-      h('label',{class:'flash-toggle'},floatInp,h('span',null,h('b',null,'自动漂浮'),h('small',null,'停止操作后保持轻微立体呼吸'))),
+      h('label',{class:'flash-toggle'},floatInp,h('span',null,h('b',null,'呼吸与漂浮'),h('small',null,'停止操作后保持轻微立体呼吸'))),
       h('p',{class:'form-hint'},'手指横向拖动可旋转，点击翻面；桌面端滚轮可缩放。竖向滑动仍交给页面滚动。')),
-      actions:[{label:'恢复默认',onClick:()=>{quality='holo';depth=1;shine=.62;autoFloat=true;draw();}},{label:'完成',cls:'btn-primary',onClick:c=>{live();c();}}]});
+      actions:[{label:'恢复默认',onClick:()=>{quality='holo';depth=1;shine=.34;autoFloat=true;draw();}},{label:'完成',cls:'btn-primary',onClick:c=>{live();c();}}]});
   }
   function fallbackCard(cardMeta,unlocked,reason=''){
     const unlockTs=pet.stageUnlocked?.[cardMeta.stage]||(cardMeta.stage===1?pet.ownedAt:null)||(cardMeta.stage===4?pet.coronationAt:null);

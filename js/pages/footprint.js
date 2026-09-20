@@ -130,6 +130,7 @@ async function renderRecordFeed(box, ctx, filter = 'all') {
     const row = h('article',{class:'record-feed-row timeline-row kind-'+e.kind+(meta.click?' clickable':''),'data-kind':e.kind},
       h('span',{class:'record-kind-icon','aria-hidden':'true'},icon(kindIcon(e.kind))),
       h('div',{class:'record-feed-main'},
+        meta.moodId ? h('img',{class:'record-mood-face',src:moodArt(meta.moodId),alt:moodById(meta.moodId)?.name||'心情'}) : null,
         h('div',{class:'record-feed-title'},h('b',null,meta.title),h('time',null,meta.timeLabel||new Date(actualTs(e)||Date.now()).toTimeString().slice(0,5))),
         meta.sub ? h('div',{class:'record-feed-sub'},meta.sub) : null,
         meta.photoId ? h('img',{class:'journal-photo record-photo','data-photo':meta.photoId,alt:'手账照片',loading:'lazy'}) : null),
@@ -149,7 +150,7 @@ async function renderRecordFeed(box, ctx, filter = 'all') {
       const r=focusMap.get(e.refId);const st=Number(r?.startedTs),et=Number(r?.endedTs);const range=Number.isFinite(st)&&Number.isFinite(et)?`${new Date(st).toTimeString().slice(0,5)}–${new Date(et).toTimeString().slice(0,5)}`:''; return {title:`专注 ${fmtMin(e.minutes||r?.minutes||0)}`,timeLabel:Number.isFinite(st)?new Date(st).toTimeString().slice(0,5):null,sub:[range,r?.note||''].filter(Boolean).join(' · ')};
     }
     if (e.kind === 'journal') {
-      const r=journalMap.get(e.refId); return {title:r?.text||'记录了一份心情',sub:r?.mood?`心情 · ${moodById(r.mood)?.name||'已记录'}`:'',photoId:r?.photoId||null,click:r?()=>journalDialog(r,ctx):null};
+      const r=journalMap.get(e.refId); return {title:r?.text||'记录了一份心情',sub:'',moodId:r?.mood||null,photoId:r?.photoId||null,click:r?()=>journalDialog(r,ctx):null};
     }
     if (e.kind === 'ledger') {
       const r=ledgerMap.get(e.refId); const settingsCurrency='¥';
@@ -292,9 +293,9 @@ async function renderJournal(box, ctx) {
   for (const j of entries.slice(0, 60)) {
     const mood = moodById(j.mood);
     const row = h('div', { class: 'row-item', style: 'align-items:flex-start' },
-      h('img', { class: 'avatar', style: 'width:34px;height:34px', src: moodArt(j.mood), alt: mood.name }),
+      h('img', { class: 'avatar journal-mood-face', style: 'width:42px;height:42px', src: moodArt(j.mood), alt: mood.name }),
       h('div', { class: 'row-main' },
-        h('div', { class: 'row-sub' }, h('span', null, fmtCN(j.dateKey)), h('span', null, mood.name), j.category ? h('span', null, catName(j.category)) : null),
+        h('div', { class: 'row-sub' }, h('span', null, fmtCN(j.dateKey)), j.category ? h('span', null, catName(j.category)) : null),
         j.text ? h('div', { class: 'row-title', style: 'white-space:normal;font-weight:500;margin-top:2px' }, j.text) : null,
         j.photoId ? h('img', { class: 'journal-photo', style: 'margin-top:8px', 'data-photo': j.photoId, alt: '照片', loading:'lazy' }) : null),
       h('button', { class: 'iconbtn', style: 'width:34px;height:34px;font-size:16px', onclick: () => journalDialog(j, ctx) }, icon('edit')));
@@ -334,9 +335,10 @@ export async function journalDialog(entry = null, ctx = null, presetDate = null)
   const ta = h('textarea', { class: 'input', rows: '3', placeholder: '一句话记录今天（可只选心情）', maxlength: '500' });
   ta.value = j.text || '';
   let mood = j.mood;
-  const moodPick = h('div', { class: 'mood-pick' }, MOODS.map((m) => h('button', {
-    class: m.id === mood ? 'on' : '', onclick: (e) => { mood = m.id; [...moodPick.children].forEach((x) => x.classList.remove('on')); e.currentTarget.classList.add('on'); sound.play('tap'); },
-  }, h('img', { src: moodArt(m.id), alt: m.name }), m.name)));
+  const moodPick = h('div', { class: 'mood-pick mood-pick-art' }, MOODS.map((m) => h('button', {
+    class: m.id === mood ? 'on' : '', 'aria-label':m.name, title:m.name,
+    onclick: (e) => { mood = m.id; [...moodPick.children].forEach((x) => x.classList.remove('on')); e.currentTarget.classList.add('on'); sound.play('tap'); },
+  }, h('img', { src: moodArt(m.id), alt: m.name }))));
   const originalPhotoId = j.photoId || null;
   let photoId = originalPhotoId;
   const tempPhotoIds = new Set();

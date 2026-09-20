@@ -11,26 +11,76 @@ export function petFigure(pet, { interactive = false, onClick = null, onDispose 
     ...(interactive ? { type: 'button', 'aria-label': '和' + (pet.name || '伙伴') + '互动' } : {}),
   });
   const fallback = h('span', { class: 'paper-pet-fallback', 'aria-hidden': 'true' }, icon('pet'), h('span', null, pet.name || '伙伴'));
-  const img = h('img', { class: 'paper-pet-image', alt: pet.name || '伙伴', width: '1024', height: '1024', decoding: 'async', draggable: 'false' });
-  let failed = false;
-  const setSource = nextAction => {
+  const primary = def.petId === PRIMARY_PET_ID;
+  const sourceFor = nextAction => primary
+    ? new URL('../../' + petAssetPath(def.petId, stage, nextAction).replace(/^\.\//,''), import.meta.url).href
+    : new URL(`../../assets/ui/pets/${def.petId}.webp`, import.meta.url).href;
+
+  let disposed = false, token = 0, current = null, activeIndex = 0;
+  const layers = [0,1].map(i => h('img', {
+    class: 'paper-pet-image pet-buffer-layer' + (i === 0 ? ' is-active' : ''), alt: pet.name || '伙伴',
+    width: '1024', height: '1024', decoding: 'async', draggable: 'false', 'aria-hidden': i ? 'true' : 'false',
+  }));
+  if (!primary) layers[1].hidden = true;
+
+  const reveal = img => { fallback.hidden = true; img.hidden = false; img.classList.add('is-loaded'); };
+  const setSource = (nextAction = 'idle') => {
+    if (disposed) return;
     const act = nextAction || 'idle';
     wrap.dataset.action = act;
-    if (def.petId === PRIMARY_PET_ID) img.src = new URL('../../' + petAssetPath(def.petId, stage, act).replace(/^\.\//,''), import.meta.url).href;
-    else img.src = new URL(`../../assets/ui/pets/${def.petId}.webp`, import.meta.url).href;
+    if (!primary) {
+      const img = layers[0];
+      const wanted = sourceFor(act);
+      if (img.src === wanted && img.classList.contains('is-loaded')) return;
+      img.onload = () => reveal(img);
+      img.onerror = () => {
+        const png = new URL(`../../assets/pets/${def.petId}.png`, import.meta.url).href;
+        if (img.src !== png) img.src = png; else { img.hidden = true; fallback.hidden = false; }
+      };
+      img.src = wanted;
+      return;
+    }
+    if (current === act && layers[activeIndex].classList.contains('is-loaded')) return;
+    const myToken = ++token;
+    const nextIndex = activeIndex === 0 ? 1 : 0;
+    const next = layers[nextIndex], prev = layers[activeIndex];
+    const wanted = sourceFor(act);
+    next.classList.remove('is-loaded','is-active');
+    next.setAttribute('aria-hidden','true');
+    next.onload = () => {
+      if (disposed || myToken !== token) return;
+      requestAnimationFrame(() => {
+        if (disposed || myToken !== token) return;
+        reveal(next);
+        next.classList.add('is-active'); next.setAttribute('aria-hidden','false');
+        prev.classList.remove('is-active'); prev.setAttribute('aria-hidden','true');
+        activeIndex = nextIndex; current = act;
+      });
+    };
+    next.onerror = () => {
+      if (disposed || myToken !== token) return;
+      if (act !== 'idle') { setSource('idle'); return; }
+      next.hidden = true; fallback.hidden = false;
+    };
+    next.src = wanted;
+    if (next.complete && next.naturalWidth) next.onload?.();
   };
-  img.addEventListener('load', () => { if (failed) return; fallback.hidden = true; img.hidden = false; img.classList.add('is-loaded'); });
-  img.addEventListener('error', () => {
-    if (def.petId === PRIMARY_PET_ID && wrap.dataset.action !== 'idle') { setSource('idle'); return; }
-    if (def.petId !== PRIMARY_PET_ID && !failed) { failed = true; img.src = new URL(`../../assets/pets/${def.petId}.png`, import.meta.url).href; return; }
-    img.hidden = true; fallback.hidden = false;
-  });
-  setSource(action);
-  wrap.append(fallback, img);
+
+  wrap.append(fallback, ...layers);
   wrap._restPetAction = action || 'idle';
   wrap._setPetAction = setSource;
+  setSource(action);
+
+  // Preload all actions for the current stage once so the first real interaction does not flash.
+  if (primary && typeof Image !== 'undefined') {
+    queueMicrotask(() => {
+      ['idle','happy','touch','feed','play','encourage','sleep','celebrate'].forEach(act => {
+        const pre = new Image(); pre.decoding = 'async'; pre.src = sourceFor(act);
+      });
+    });
+  }
   if (interactive && onClick) wrap.addEventListener('click', onClick);
-  onDispose?.(() => { wrap._paperAnimation?.cancel(); clearTimeout(wrap._paperTimer); });
+  onDispose?.(() => { disposed = true; token++; wrap._paperAnimation?.cancel(); clearTimeout(wrap._paperTimer); });
   return wrap;
 }
 
@@ -47,14 +97,18 @@ export function petResponse(figure, bubble, text, action = 'touch') {
   if (bubble) bubble.textContent = text;
   const mapped = action === 'eat' ? 'feed' : action;
   figure._setPetAction?.(mapped);
+  const scenePet = figure.closest?.('.companion-scene-pet');
+  scenePet?.classList.add('is-interacting');
   clearTimeout(figure._paperTimer);
-  figure._paperTimer=setTimeout(()=>figure._setPetAction?.(figure._restPetAction || 'idle'), mapped==='celebrate'?2200:1500);
-  const image = figure.querySelector('.paper-pet-image');
+  figure._paperTimer=setTimeout(()=>{
+    figure._setPetAction?.(figure._restPetAction || 'idle');
+    scenePet?.classList.remove('is-interacting');
+  }, mapped==='celebrate'?2500:1700);
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (reduced || document.body.dataset.motion === 'off' || !image?.animate) return;
+  if (reduced || document.body.dataset.motion === 'off' || !figure.animate) return;
   figure._paperAnimation?.cancel();
-  figure._paperAnimation = image.animate(actions[mapped] || actions.touch, {
-    duration: document.body.dataset.motion === 'light' ? 320 : 720,
+  figure._paperAnimation = figure.animate(actions[mapped] || actions.touch, {
+    duration: document.body.dataset.motion === 'light' ? 360 : 780,
     iterations: mapped === 'feed' ? 2 : 1, easing: 'cubic-bezier(.22,.8,.3,1)',
   });
 }

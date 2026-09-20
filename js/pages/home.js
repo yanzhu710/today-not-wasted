@@ -2,7 +2,7 @@
 import { all, allByIndex, get, put, del, loadKV, saveKV, patchKV } from '../core/db.js';
 import { PETS, SHOP, SHOP_CATS, BADGES, BADGE_SERIES, badgeById, badgeRarity, stageOf, stageProgress, STAGES, PRIMARY_PET_ID, CROWN_ITEM_ID, COMPANION_CONFIG, shopById, isUnlocked, unlockText, POINTS } from '../core/catalog.js';
 import { purchaseItem, redeemCustomReward, usePetItem, petInteract, claimPetWithInvite, savePetName, setActivePet, coronateActivePet, balance, stats, getActivePet } from '../core/engine.js';
-import { shopArt, badgeArt, setBadgeIndex } from '../core/art.js';
+import { shopArt, badgeArt, setBadgeIndex, companionMoodArt } from '../core/art.js';
 import { h, icon, fmtMin, todayKey, fmtCN, uid } from '../core/util.js';
 import { openModal, actionSheet, confirmDlg, formDlg, queueSettle, toast, burstAt, sparkleAt, pulse } from '../core/fx.js';
 import * as sound from '../core/sound.js';
@@ -156,41 +156,40 @@ function playBadgeTapFx(anchor, got, points = 10) {
 
 // ---- 家园 ----
 async function renderHomeTab(box, ctx) {
-  const [pets, appMeta, unlocked, inventory, petLogs] = await Promise.all([all('pets'),loadKV('app_meta'),all('badges'),all('inventory'),allByIndex('petlog','dateKey',todayKey())]);
+  const [pets, appMeta, unlocked, inventory, petLogs] = await Promise.all([
+    all('pets'), loadKV('app_meta'), all('badges'), all('inventory'), allByIndex('petlog','dateKey',todayKey()),
+  ]);
   const active=pets.find(p=>p.petId===appMeta.activePet)||pets.find(p=>p.petId===PRIMARY_PET_ID)||pets[0];
   if(!active){box.append(h('p',{class:'paper-empty'},'伙伴正在准备中，请重新打开一次。'));return;}
   const { petFigure,petResponse }=await import('../ui/paper.js');
   await syncCompanionMemories(active);
   const memories=await companionMemories(active.petId);
-  const stage=companionStage(active), progress=stageProgress(active.growth||0,!!active.coronationAt), status=companionStatus(active);
+  let stage=companionStage(active), progress=stageProgress(active.growth||0,!!active.coronationAt), status=companionStatus(active);
   const togetherDays=Math.max(1,Math.floor((Date.now()-(Number(active.ownedAt)||Date.now()))/86400000)+1);
   const mode=appMeta.companionView==='cards'?'cards':'form';
-  const todayLogs=petLogs.filter(l=>l.dateKey===todayKey()&&l.interaction&&Number(l.amount)>0);
-  const totalRewarded=todayLogs.length,totalCap=Object.values(COMPANION_CONFIG.interactionDailyCaps).reduce((a,b)=>a+b,0);
-  box.classList.add('companion-v25');
+  const rewardCounts=new Map();
+  for(const kind of ['touch','feed','play','encourage']) rewardCounts.set(kind,petLogs.filter(l=>l.dateKey===todayKey()&&l.interaction===kind&&Number(l.amount)>0).length);
+  const totalCap=Object.values(COMPANION_CONFIG.interactionDailyCaps).reduce((a,b)=>a+b,0);
+  box.classList.add('companion-v25','companion-v251');
 
   async function renamePet(force=false){
     const v=await formDlg({title:force?'给你的伙伴起个名字':'给伙伴改名',submitLabel:'保存',fields:[{key:'n',label:'名字',type:'text',value:active.name||'',placeholder:'1–12 个字',required:true}]});
     if(!v?.n?.trim()){if(force)setTimeout(()=>renamePet(true),250);return;}
     await savePetName(active,v.n);await patchKV('profile',{petName:v.n.trim().slice(0,12)});toast('名字记住啦',{ic:'heart'});ctx.rerender('home?tab=home');
   }
-  // v2.5.0：老用户迁移后如果没有自定义过伙伴名，第一次打开伙伴页也必须完成命名。
   if(!String(active.name||'').trim()&&!window.__tjmbgCompanionNamePrompted){
     window.__tjmbgCompanionNamePrompted=true;
     setTimeout(()=>renamePet(true),180);
   }
 
-  const identity=h('section',{class:'companion-identity'},
-    h('div',{class:'companion-name-block'},h('span',{class:'companion-kicker'},'MY COMPANION'),
-      h('div',{class:'companion-name-line'},h('h1',null,companionDisplayName(active)),h('button',{class:'companion-inline-btn','aria-label':'改名',onclick:()=>renamePet(false)},icon('edit'))),
-      h('p',null,`Lv.${stage.n} ${stage.name} · 已陪伴 ${togetherDays} 天`)),
-    h('div',{class:'companion-head-actions'},
-      h('button',{class:'iconbtn','aria-label':'伙伴资料',onclick:()=>openCompanionProfile(active,togetherDays,memories)},icon('book')),
-      h('button',{class:'iconbtn','aria-label':'切换伙伴',onclick:()=>openPartnerBook(pets,active,ctx)},icon('pet'))));
-  const modeSwitch=h('div',{class:'companion-view-switch','aria-label':'伙伴展示方式'},
+  const modeSwitch=h('div',{class:'companion-view-switch compact','aria-label':'伙伴展示方式'},
     h('button',{class:mode==='form'?'on':'',onclick:async()=>{if(mode==='form')return;await patchKV('app_meta',{companionView:'form'});ctx.rerender('home?tab=home');}},'形态'),
     h('button',{class:mode==='cards'?'on':'',onclick:async()=>{if(mode==='cards')return;await patchKV('app_meta',{companionView:'cards'});ctx.rerender('home?tab=home');}},'闪卡'));
-  box.append(identity,modeSwitch);
+  const toolbar=h('section',{class:'companion-toolbar'},modeSwitch,
+    h('div',{class:'companion-toolbar-actions'},
+      h('button',{class:'iconbtn','aria-label':'伙伴资料',onclick:()=>openCompanionProfile(active,togetherDays,memories)},icon('book')),
+      h('button',{class:'iconbtn','aria-label':'切换伙伴',onclick:()=>openPartnerBook(pets,active,ctx)},icon('pet'))));
+  box.append(toolbar);
 
   if(mode==='cards'){
     const {renderFlashcards}=await import('../ui/flashcards.js');
@@ -199,55 +198,80 @@ async function renderHomeTab(box, ctx) {
     return;
   }
 
+  const restActionFor=id=>id==='困困'?'sleep':(['开心','满足','元气','活泼','惊喜','荣耀'].includes(id)?'happy':'idle');
   const bubble=h('p',{class:'companion-scene-bubble','aria-live':'polite'},status.text);
   let figure;
-  const restAction=status.id==='困困'?'sleep':status.id==='开心'?'happy':'idle';
-  figure=petFigure(active,{interactive:true,action:restAction,onDispose:ctx.onDispose,onClick:()=>runInteraction('touch')});
+  const scenePet=h('div',{class:'companion-scene-pet'+(restActionFor(status.id)==='sleep'?'':' is-roaming')});
+  const moodImg=h('img',{class:'companion-status-face',src:companionMoodArt(status.id),alt:status.id,draggable:'false'});
+  const nameNode=h('button',{class:'companion-scene-name',onclick:()=>renamePet(false),'aria-label':'修改伙伴名字'},companionDisplayName(active),icon('edit'));
+  const stageNode=h('span',{class:'companion-stage-pill'},`Lv.${stage.n} ${stage.name}`);
+  const growthValue=h('b',{class:'companion-growth-value'},`陪伴值 ${Number(active.growth)||0}`);
+  const growthHint=h('small',{class:'companion-growth-hint'},progress.coronationReady?'等待完成加冕':progress.next?`距离 Lv.${progress.next.n} 还差 ${progress.remain}`:'纪念期已解锁');
+  const progressEl=h('progress',{class:'paper-progress companion-scene-progress',value:progress.next?Math.max(0,Math.min(1,progress.ratio)):1,max:'1','aria-label':'陪伴值进度'});
+  const stageTrack=h('ol',{class:'companion-stage-track scene-track'},STAGES.map(st=>h('li',{class:(st.n<=stage.n?'reached ':'')+(st.n===4&&progress.coronationReady&&!active.coronationAt?'ready':'')},
+    h('span',null,st.n===4?'♛':'♡'),h('b',null,`Lv.${st.n}`),h('small',null,st.name))));
+  figure=petFigure(active,{interactive:true,action:restActionFor(status.id),onDispose:ctx.onDispose,onClick:()=>runInteraction('touch')});
+  scenePet.append(figure);
   const scene=h('section',{class:`companion-scene stage-${stage.n}`},
-    h('span',{class:'companion-scene-sun','aria-hidden':'true'}),h('span',{class:'companion-scene-leaf leaf-a','aria-hidden':'true'}),h('span',{class:'companion-scene-leaf leaf-b','aria-hidden':'true'}),
-    h('div',{class:'companion-scene-pet'},figure),bubble,
-    h('span',{class:'companion-status-chip'},'今日状态 · '+status.id));
+    h('img',{class:'companion-scene-bg',src:'./assets/ui/companion-scene-bg.jpg',alt:'',draggable:'false',decoding:'async'}),
+    h('div',{class:'companion-status-face-wrap','aria-label':'伙伴今日状态'},moodImg),
+    bubble,scenePet,
+    h('div',{class:'companion-scene-info'},
+      h('div',{class:'companion-scene-info-top'},h('div',null,nameNode,growthValue,growthHint),stageNode),
+      progressEl,stageTrack));
   box.append(scene);
 
-  const growthCard=h('section',{class:'companion-growth-panel'},
-    h('div',{class:'companion-growth-top'},
-      h('div',null,h('span',{class:'companion-kicker'},'TOGETHER'),h('b',null,`陪伴值 ${Number(active.growth)||0}`),
-        h('small',null,progress.coronationReady?'条件已达成，等待完成加冕':progress.next?`距离 Lv.${progress.next.n} 还差 ${progress.remain}`:'纪念期已解锁')),
-      h('span',{class:'companion-stage-pill'},`Lv.${stage.n} ${stage.name}`)),
-    h('progress',{class:'paper-progress',value:progress.next?Math.max(0,Math.min(1,progress.ratio)):1,max:'1','aria-label':'陪伴值进度'}),
-    h('ol',{class:'companion-stage-track'},STAGES.map(st=>h('li',{class:(st.n<=stage.n?'reached ':'')+(st.n===4&&progress.coronationReady&&!active.coronationAt?'ready':'')},
-      h('span',null,st.n===4?'♛':'♡'),h('b',null,`Lv.${st.n}`),h('small',null,st.name)))));
-  box.append(growthCard);
-
-  const interactions=h('section',{class:'companion-interactions'},
-    h('div',{class:'companion-section-head'},h('div',null,h('h2',null,'和它待一会儿'),h('p',null,`今天已有 ${totalRewarded}/${totalCap} 次互动带来陪伴值；达到上限后仍然可以继续玩。`))),
+  const interactions=h('section',{class:'companion-interactions companion-interactions-blend'},
+    h('div',{class:'companion-section-head'},h('div',null,h('h2',null,'和它待一会儿'),h('p',null,'动作会得到回应；每天可获得的陪伴值有上限，但互动本身没有上限。'))),
     h('div',{class:'companion-action-grid'}));
   const actionGrid=interactions.lastElementChild;
   const defs=[['touch','摸摸','heart'],['feed','喂食','gift'],['play','玩耍','pet'],['encourage','鼓励','star']];
-  let busy=false;const buttons=[],buttonByKind=new Map();
-  defs.forEach(([kind,label,ic])=>{const cap=COMPANION_CONFIG.interactionDailyCaps[kind]||0,count=todayLogs.filter(l=>l.interaction===kind).length;const b=h('button',{class:'companion-action action-'+kind,onclick:()=>runInteraction(kind)},h('span',null,icon(ic)),h('b',null,label),h('small',null,count>=cap?'今天的陪伴值已收满':`${Math.min(count,cap)}/${cap} 次有陪伴值`));buttons.push(b);buttonByKind.set(kind,b);actionGrid.append(b);});
+  let busy=false;const buttons=[],buttonByKind=new Map(),counterByKind=new Map();
+  defs.forEach(([kind,label,ic])=>{
+    const cap=COMPANION_CONFIG.interactionDailyCaps[kind]||0,count=rewardCounts.get(kind)||0;
+    const counter=h('small',null,count>=cap?'今日陪伴值已收满':`${Math.min(count,cap)}/${cap}`);
+    const b=h('button',{class:'companion-action action-'+kind,onclick:()=>runInteraction(kind)},h('span',null,icon(ic)),h('b',null,label),counter);
+    buttons.push(b);buttonByKind.set(kind,b);counterByKind.set(kind,counter);actionGrid.append(b);
+  });
   box.append(interactions);
 
+  function refreshGrowthUI(fresh){
+    stage=companionStage(fresh);progress=stageProgress(fresh.growth||0,!!fresh.coronationAt);
+    growthValue.textContent=`陪伴值 ${Number(fresh.growth)||0}`;
+    growthHint.textContent=progress.coronationReady?'等待完成加冕':progress.next?`距离 Lv.${progress.next.n} 还差 ${progress.remain}`:'纪念期已解锁';
+    stageNode.textContent=`Lv.${stage.n} ${stage.name}`;
+    progressEl.value=progress.next?Math.max(0,Math.min(1,progress.ratio)):1;
+    [...stageTrack.children].forEach((li,i)=>{li.classList.toggle('reached',i+1<=stage.n);li.classList.toggle('ready',i===3&&progress.coronationReady&&!fresh.coronationAt);});
+  }
+  function refreshStatusUI(nextStatus){
+    if(!nextStatus)return;status=nextStatus;moodImg.src=companionMoodArt(status.id);moodImg.alt=status.id;
+    figure._restPetAction=restActionFor(status.id);
+    scenePet.classList.toggle('is-roaming',figure._restPetAction!=='sleep');
+  }
   async function runInteraction(kind){
     if(busy)return;busy=true;buttons.forEach(b=>b.disabled=true);figure.disabled=true;
+    const beforeStage=stage.n;
     try{
       let result=null,item=null;
       if(kind==='feed'||kind==='play'){
         const cat=kind==='feed'?'food':'toy';
-        const available=inventory.some(row=>row.qty>0&&shopById(row.itemId)?.cat===cat);
+        const freshInventory=await all('inventory');
+        const available=freshInventory.some(row=>row.qty>0&&shopById(row.itemId)?.cat===cat);
         if(!available){const go=await confirmDlg(cat==='food'?'还没有可以喂的食物':'还没有可以玩的玩具','去商城挑一个喜欢的，再回来互动吧。',{okLabel:'去商城'});if(go)ctx.navigate('rewards','shop');return;}
         const {choosePetItem}=await import('../core/item-picker.js');result=await choosePetItem(cat);if(!result?.ok)return;item=result.item;
       }else result=await petInteract({kind,touch:kind==='touch'});
       const lines={touch:'蹭蹭你，我在呢。',feed:item?`吃到了${item.name}，好满足。`:'吃饱啦。',play:item?`和你一起玩${item.name}最开心了。`:'一起玩一会儿吧。',encourage:'你已经很努力了，今天也要对自己好一点。'};
-      petResponse(figure,bubble,lines[kind],kind);
-      pulse(figure);
+      petResponse(figure,bubble,lines[kind],kind);pulse(figure);refreshStatusUI(result?.status);
       const fxColors={touch:['#E8A0B4','#F5D7DE','#FFF4E8'],feed:['#E7B65A','#F2D98C','#F9E8C3'],play:['#7FA989','#B7CFB0','#F4E8B4'],encourage:['#D8A94D','#F2D98C','#FFF6DF']}[kind];
       sparkleAt(buttonByKind.get(kind)||figure,{colors:fxColors,count:7,radius:34});
       try { navigator.vibrate?.(kind==='play'?[18,26,18]:18); } catch {}
+      if(result?.growth>0){rewardCounts.set(kind,(rewardCounts.get(kind)||0)+1);const cap=COMPANION_CONFIG.interactionDailyCaps[kind]||0,count=rewardCounts.get(kind)||0;counterByKind.get(kind).textContent=count>=cap?'今日陪伴值已收满':`${Math.min(count,cap)}/${cap}`;}
+      const fresh=await getActivePet();if(fresh)refreshGrowthUI(fresh);
       if(result?.discovered){const found=result.discovered.type==='food'?shopById(result.discovered.itemId)?.name:result.discovered.type==='toy'?shopById(result.discovered.itemId)?.name:'摸摸';toast(`✨ 好像发现了它很喜欢「${found||'这个'}」`,{ic:'heart',ms:3200});}
       else if(result?.growth>0) toast(`陪伴值 +${result.growth}`,{ic:'heart'});
       else if(result?.capped) toast('今天的陪伴已经很满啦，继续互动也一样会回应你。',{ic:'heart',ms:2800});
-      sound.play('pet');setTimeout(()=>ctx.rerender('home?tab=home'),1550);
+      sound.play('pet');
+      if(fresh && companionStage(fresh).n>beforeStage){setTimeout(()=>ctx.rerender('home?tab=home'),2800);}
     }catch(error){console.error(error);toast(error.message||'这次互动没有完成',{ic:'error'});}
     finally{busy=false;buttons.forEach(b=>b.disabled=false);figure.disabled=false;}
   }
@@ -257,7 +281,7 @@ async function renderHomeTab(box, ctx) {
     box.append(h('section',{class:'companion-crown crowned'},h('span',{class:'crown-symbol'},'♛'),h('div',null,h('b',null,'纪念期 · 已完成加冕'),h('p',null,`这次成长仪式完成于 ${fmtCN(new Date(active.coronationAt).toISOString().slice(0,10))}。Lv.4 闪卡已经解锁。`)),h('button',{class:'btn btn-soft btn-sm',onclick:async()=>{await patchKV('app_meta',{companionView:'cards'});ctx.rerender('home?tab=home');}},'查看纪念闪卡')));
   }else if(coronationReady(active)){
     box.append(h('section',{class:'companion-crown ready'},h('span',{class:'crown-symbol'},'♛'),h('div',null,h('b',null,'已经达到加冕条件'),h('p',null,crownInv?'加冕果实已经准备好了。完成仪式后会进入 Lv.4 纪念期。':'去商城兑换一颗加冕果实，再回来完成最后的成长仪式。')),
-      crownInv?h('button',{class:'btn btn-primary btn-sm',onclick:async()=>{if(!(await confirmDlg('完成加冕仪式？','会消耗 1 颗加冕果实，并永久解锁 Lv.4 纪念期与最终闪卡。',{okLabel:'开始加冕'})))return;const r=await coronateActivePet();if(r?.err){toast(r.err,{ic:'error'});return;}petResponse(figure,bubble,'从今天开始，我们又多了一段值得珍藏的故事。','celebrate');toast('加冕完成 · Lv.4 纪念期已解锁',{ic:'badge',ms:3600});setTimeout(()=>ctx.rerender('home?tab=home'),2200);}},'喂食加冕果实'):h('button',{class:'btn btn-primary btn-sm',onclick:()=>{shopCat='growth';ctx.navigate('rewards','shop');}},'去商城兑换')));
+      crownInv?h('button',{class:'btn btn-primary btn-sm',onclick:async()=>{if(!(await confirmDlg('完成加冕仪式？','会消耗 1 颗加冕果实，并永久解锁 Lv.4 纪念期与最终闪卡。',{okLabel:'开始加冕'})))return;const r=await coronateActivePet();if(r?.err){toast(r.err,{ic:'error'});return;}petResponse(figure,bubble,'从今天开始，我们又多了一段值得珍藏的故事。','celebrate');refreshStatusUI({id:'荣耀',text:'完成了特别的加冕仪式。'});toast('加冕完成 · Lv.4 纪念期已解锁',{ic:'badge',ms:3600});setTimeout(()=>ctx.rerender('home?tab=home'),3000);}},'喂食加冕果实'):h('button',{class:'btn btn-primary btn-sm',onclick:()=>{shopCat='growth';ctx.navigate('rewards','shop');}},'去商城兑换')));
   }
 
   const prefs=active.preferences||{food:[],toy:[],interaction:[]};
@@ -293,9 +317,17 @@ function preferenceText(pet,type){
 }
 function openCompanionProfile(pet,togetherDays,memories){
   const st=companionStage(pet),status=companionStatus(pet);
+  const statusFace=h('img',{class:'companion-profile-mood',src:companionMoodArt(status.id),alt:status.id,draggable:'false'});
   openModal({title:(pet.name||'伙伴')+'的资料',content:h('div',{class:'companion-profile-sheet'},
     h('div',{class:'companion-profile-hero'},h('img',{src:`./assets/pets/ali/ali_lv${st.n}_idle.png`,alt:'',draggable:'false'}),h('div',null,h('b',null,pet.name||'你的伙伴'),h('span',null,`Lv.${st.n} ${st.name}`),h('small',null,`陪伴值 ${pet.growth||0}`))),
-    h('dl',null,h('div',null,h('dt',null,'相遇日'),h('dd',null,fmtCN(new Date(pet.ownedAt||Date.now()).toISOString().slice(0,10)))),h('div',null,h('dt',null,'陪伴天数'),h('dd',null,`${togetherDays} 天`)),h('div',null,h('dt',null,'今日状态'),h('dd',null,status.id)),h('div',null,h('dt',null,'喜欢的食物'),h('dd',null,preferenceText(pet,'food'))),h('div',null,h('dt',null,'喜欢的玩具'),h('dd',null,preferenceText(pet,'toy'))),h('div',null,h('dt',null,'喜欢的互动'),h('dd',null,preferenceText(pet,'interaction'))),h('div',null,h('dt',null,'共同回忆'),h('dd',null,`${memories.length} 个`)))),actions:[{label:'关闭',onClick:c=>c()}]});
+    h('dl',null,
+      h('div',null,h('dt',null,'相遇日'),h('dd',null,fmtCN(new Date(pet.ownedAt||Date.now()).toISOString().slice(0,10)))),
+      h('div',null,h('dt',null,'陪伴天数'),h('dd',null,`${togetherDays} 天`)),
+      h('div',{class:'companion-profile-status-row'},h('dt',null,'今日状态'),h('dd',null,statusFace)),
+      h('div',null,h('dt',null,'喜欢的食物'),h('dd',null,preferenceText(pet,'food'))),
+      h('div',null,h('dt',null,'喜欢的玩具'),h('dd',null,preferenceText(pet,'toy'))),
+      h('div',null,h('dt',null,'喜欢的互动'),h('dd',null,preferenceText(pet,'interaction'))),
+      h('div',null,h('dt',null,'共同回忆'),h('dd',null,`${memories.length} 个`)))),actions:[{label:'关闭',onClick:c=>c()}]});
 }
 function openMemories(memories,focusId=null){
   const list=h('div',{class:'companion-memory-list'});

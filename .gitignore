@@ -5,3 +5,6 @@
 .v243_backup_*/
 .v245_backup_*/
 .v250_backup_*/
+
+# v2.5.1 patch backups
+.v251_backup_*/

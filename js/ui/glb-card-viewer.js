@@ -15,6 +15,7 @@ function mat4Mul(a,b){const o=new Float32Array(16);for(let c=0;c<4;c++)for(let r
 function mat4Translate(x,y,z){const m=mat4Identity();m[12]=x;m[13]=y;m[14]=z;return m;}
 function mat4RotateX(a){const c=Math.cos(a),s=Math.sin(a),m=mat4Identity();m[5]=c;m[6]=s;m[9]=-s;m[10]=c;return m;}
 function mat4RotateY(a){const c=Math.cos(a),s=Math.sin(a),m=mat4Identity();m[0]=c;m[2]=-s;m[8]=s;m[10]=c;return m;}
+function mat4Scale(x,y,z){const m=mat4Identity();m[0]=x;m[5]=y;m[10]=z;return m;}
 function mat4Perspective(fovy,aspect,near,far){const f=1/Math.tan(fovy/2),nf=1/(near-far),m=new Float32Array(16);m[0]=f/aspect;m[5]=f;m[10]=(far+near)*nf;m[11]=-1;m[14]=2*far*near*nf;return m;}
 
 function parseGlb(buffer){
@@ -50,12 +51,26 @@ void main(){vec4 w=uModel*vec4(aPosition,1.0);vWorld=w.xyz;vNormal=normalize(mat
 const FS=`
 precision mediump float;varying vec3 vNormal;varying vec3 vWorld;varying vec2 vUV;
 uniform vec4 uBase;uniform vec3 uEmissive;uniform float uRough;uniform float uShine;uniform bool uUseTex;uniform bool uUseEmissiveTex;uniform sampler2D uTex;
-void main(){vec3 n=normalize(vNormal);if(!gl_FrontFacing)n=-n;vec4 tex=uUseTex?texture2D(uTex,vUV):vec4(1.0);vec4 base=uBase*tex;if(base.a<0.02)discard;vec3 L=normalize(vec3(-0.35,0.55,0.78));vec3 V=normalize(vec3(0.0,0.0,5.2)-vWorld);vec3 H=normalize(L+V);float diff=max(dot(n,L),0.0);float p=mix(70.0,10.0,clamp(uRough,0.0,1.0));float spec=pow(max(dot(n,H),0.0),p)*uShine;vec3 emit=uEmissive*(uUseEmissiveTex?tex.rgb:vec3(1.0));vec3 col=base.rgb*(0.54+0.62*diff)+vec3(spec)+emit*0.58;col=col/(col+vec3(0.35));col=pow(col,vec3(0.92));gl_FragColor=vec4(col,base.a);}`;
+void main(){
+  vec3 n=normalize(vNormal);if(!gl_FrontFacing)n=-n;
+  vec4 tex=uUseTex?texture2D(uTex,vUV):vec4(1.0);
+  if(tex.a*uBase.a<0.02)discard;
+  vec3 texLinear=uUseTex?pow(max(tex.rgb,vec3(0.0)),vec3(2.2)):vec3(1.0);
+  vec3 baseLinear=uBase.rgb*texLinear;
+  vec3 L=normalize(vec3(-0.28,0.48,0.83));vec3 V=normalize(vec3(0.0,0.0,5.8)-vWorld);vec3 H=normalize(L+V);
+  float diff=max(dot(n,L),0.0);float p=mix(58.0,12.0,clamp(uRough,0.0,1.0));
+  float spec=pow(max(dot(n,H),0.0),p)*uShine*.36;
+  vec3 emit=uEmissive*(uUseEmissiveTex?texLinear:vec3(1.0));
+  vec3 col=baseLinear*(0.30+0.72*diff)+vec3(spec)+emit*0.10;
+  col=col/(col+vec3(0.90));
+  col=pow(max(col,vec3(0.0)),vec3(1.0/2.2));
+  gl_FragColor=vec4(col,tex.a*uBase.a);
+}`;
 
 export const GLB_CARD_PATHS={1:'./assets/cards/runtime/stage1.glb',2:'./assets/cards/runtime/stage2.glb',3:'./assets/cards/runtime/stage3.glb',4:'./assets/cards/runtime/stage4.glb'};
 
 export class GlbCardViewer{
-  constructor(host,{stage=1,depth=1,shine=.58,quality='holo',autoFloat=true,onError=null}={}){
+  constructor(host,{stage=1,depth=1,shine=.34,quality='holo',autoFloat=true,onError=null}={}){
     this.host=host;this.stage=stage;this.depth=depth;this.shine=shine;this.quality=quality;this.autoFloat=autoFloat;this.onError=onError;this.rx=-.02;this.ry=0;this.flip=0;this.zoom=1;this.targetFlip=0;this.drag=false;this.moved=false;this.disposed=false;this.visible=true;this.frame=0;this.resources=[];this.primitives=[];
     this.canvas=document.createElement('canvas');this.canvas.className='glb-card-canvas';this.canvas.setAttribute('aria-label',`Lv.${stage} 3D 闪卡`);this.canvas.tabIndex=0;
     this.glow=document.createElement('span');this.glow.className='glb-card-holo';this.host.replaceChildren(this.canvas,this.glow);
@@ -74,14 +89,14 @@ export class GlbCardViewer{
         for(let i=0;i<pos.length;i+=3){const p=quatRotate([pos[i],pos[i+1],pos[i+2]],q),n=quatRotate([nor[i],nor[i+1],nor[i+2]],q);p2.set(p,i);n2.set(n,i);for(let k=0;k<3;k++){min[k]=Math.min(min[k],p[k]);max[k]=Math.max(max[k],p[k]);}}
         prepared.push({p:p2,n:n2,uv,idx,material:json.materials?.[prim.material??0]||{}});
       }
-      const center=min.map((v,i)=>(v+max[i])/2),height=Math.max(.001,max[1]-min[1]),scale=3.1/height;
+      const center=min.map((v,i)=>(v+max[i])/2),height=Math.max(.001,max[1]-min[1]),scale=2.74/height;
       for(const data of prepared){for(let i=0;i<data.p.length;i+=3){data.p[i]=(data.p[i]-center[0])*scale;data.p[i+1]=(data.p[i+1]-center[1])*scale;data.p[i+2]=(data.p[i+2]-center[2])*scale;}this.primitives.push(this._upload(data));}
       gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.disable(gl.CULL_FACE);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
       this._loc={mvp:gl.getUniformLocation(this.program,'uMVP'),model:gl.getUniformLocation(this.program,'uModel'),base:gl.getUniformLocation(this.program,'uBase'),em:gl.getUniformLocation(this.program,'uEmissive'),rough:gl.getUniformLocation(this.program,'uRough'),shine:gl.getUniformLocation(this.program,'uShine'),useTex:gl.getUniformLocation(this.program,'uUseTex'),useEm:gl.getUniformLocation(this.program,'uUseEmissiveTex'),tex:gl.getUniformLocation(this.program,'uTex')};
       this.resize();this.loaded=true;this.host.classList.add('is-3d-ready');this.request();return true;
     }catch(err){console.error(err);this.host.classList.add('is-3d-error');this.onError?.(err);return false;}
   }
-  _upload(data){const gl=this.gl,make=(target,array)=>{const b=gl.createBuffer();this.resources.push(b);gl.bindBuffer(target,b);gl.bufferData(target,array,gl.STATIC_DRAW);return b;};const mat=data.material||{},pbr=mat.pbrMetallicRoughness||{};return {pos:make(gl.ARRAY_BUFFER,data.p),nor:make(gl.ARRAY_BUFFER,data.n),uv:data.uv?make(gl.ARRAY_BUFFER,data.uv):null,idx:make(gl.ELEMENT_ARRAY_BUFFER,data.idx),count:data.idx.length,indexType:data.idx instanceof Uint32Array?gl.UNSIGNED_INT:data.idx instanceof Uint8Array?gl.UNSIGNED_BYTE:gl.UNSIGNED_SHORT,base:pbr.baseColorFactor||[1,1,1,1],rough:pbr.roughnessFactor??.55,em:mat.emissiveFactor||[0,0,0],useTex:pbr.baseColorTexture!=null,useEm:mat.emissiveTexture!=null};}
+  _upload(data){const gl=this.gl,make=(target,array)=>{const b=gl.createBuffer();this.resources.push(b);gl.bindBuffer(target,b);gl.bufferData(target,array,gl.STATIC_DRAW);return b;};const mat=data.material||{},pbr=mat.pbrMetallicRoughness||{};return {pos:make(gl.ARRAY_BUFFER,data.p),nor:make(gl.ARRAY_BUFFER,data.n),uv:data.uv?make(gl.ARRAY_BUFFER,data.uv):null,idx:make(gl.ELEMENT_ARRAY_BUFFER,data.idx),count:data.idx.length,indexType:data.idx instanceof Uint32Array?gl.UNSIGNED_INT:data.idx instanceof Uint8Array?gl.UNSIGNED_BYTE:gl.UNSIGNED_SHORT,base:pbr.baseColorFactor||[1,1,1,1],rough:pbr.roughnessFactor??.55,em:(mat.emissiveFactor||[0,0,0]).map(v=>Math.min(Number(v)||0,.24)),useTex:pbr.baseColorTexture!=null,useEm:mat.emissiveTexture!=null};}
   _bind(){let sx=0,sy=0,startRx=0,startRy=0,pointer=null;const c=this.canvas;
     c.addEventListener('pointerdown',e=>{this.drag=true;this.moved=false;pointer=e.pointerId;sx=e.clientX;sy=e.clientY;startRx=this.rx;startRy=this.ry;c.setPointerCapture?.(pointer);});
     c.addEventListener('pointermove',e=>{const r=c.getBoundingClientRect(),px=Math.max(0,Math.min(1,(e.clientX-r.left)/Math.max(1,r.width))),py=Math.max(0,Math.min(1,(e.clientY-r.top)/Math.max(1,r.height)));this.glow.style.setProperty('--mx',`${px*100}%`);this.glow.style.setProperty('--my',`${py*100}%`);if(!this.drag)return;const dx=e.clientX-sx,dy=e.clientY-sy;if(Math.hypot(dx,dy)>7)this.moved=true;this.ry=startRy+dx*.010*this.depth;this.rx=Math.max(-.55,Math.min(.55,startRx+dy*.007*this.depth));this.request();});
@@ -92,9 +107,9 @@ export class GlbCardViewer{
   setEffects({depth=this.depth,shine=this.shine,quality=this.quality,autoFloat=this.autoFloat}={}){this.depth=Number(depth);this.shine=Number(shine);this.quality=quality;this.autoFloat=!!autoFloat;this.glow.className=`glb-card-holo quality-${quality}`;this.request();}
   resize(){const gl=this.gl;if(!gl)return;const r=this.host.getBoundingClientRect(),dpr=Math.min(2,window.devicePixelRatio||1),w=Math.max(2,Math.round(r.width*dpr)),h=Math.max(2,Math.round(r.height*dpr));if(this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h;this.canvas.style.width=r.width+'px';this.canvas.style.height=r.height+'px';gl.viewport(0,0,w,h);}this.request();}
   request(){if(this.disposed||!this.loaded||this.frame)return;this.frame=requestAnimationFrame(t=>{this.frame=0;this.render(t);});}
-  render(t=0){if(this.disposed||!this.loaded||!this.visible)return;const gl=this.gl;const diff=this.targetFlip-this.flip;if(Math.abs(diff)>.002)this.flip+=diff*.12;else this.flip=this.targetFlip;const float=this.autoFloat&&!this.drag?Math.sin(t*.00075)*.035:0;const aspect=this.canvas.width/this.canvas.height;const fov=(this.quality==='deep'?32:this.quality==='soft'?39:35)/Math.max(.86,Math.min(1.15,this.depth));const proj=mat4Perspective(fov*Math.PI/180,aspect,.1,50);const view=mat4Translate(0,0,-5.45/this.zoom);let model=mat4Mul(mat4RotateY(this.ry+this.flip+float),mat4RotateX(this.rx+Math.sin(t*.0005)*.012));model=mat4Mul(mat4Translate(0,Math.sin(t*.001)*.025,0),model);const mv=mat4Mul(view,model),mvp=mat4Mul(proj,mv);
+  render(t=0){if(this.disposed||!this.loaded||!this.visible)return;const gl=this.gl;const diff=this.targetFlip-this.flip;if(Math.abs(diff)>.002)this.flip+=diff*.12;else this.flip=this.targetFlip;const passive=this.autoFloat&&!this.drag;const float=passive?Math.sin(t*.00072)*.026:0;const breathe=passive?1+Math.sin(t*.00115)*.010:1;const lift=passive?Math.sin(t*.0009)*.020:0;const aspect=this.canvas.width/this.canvas.height;const fov=(this.quality==='deep'?34:this.quality==='soft'?40:36)/Math.max(.86,Math.min(1.15,this.depth));const proj=mat4Perspective(fov*Math.PI/180,aspect,.1,50);const view=mat4Translate(0,0,-5.86/this.zoom);let model=mat4Mul(mat4RotateY(this.ry+this.flip+float),mat4RotateX(this.rx+(passive?Math.sin(t*.00048)*.009:0)));model=mat4Mul(mat4Scale(breathe,breathe,breathe),model);model=mat4Mul(mat4Translate(0,lift,0),model);const mv=mat4Mul(view,model),mvp=mat4Mul(proj,mv);
     gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(this.program);gl.uniformMatrix4fv(this._loc.mvp,false,mvp);gl.uniformMatrix4fv(this._loc.model,false,model);gl.activeTexture(gl.TEXTURE0);if(this.texture)gl.bindTexture(gl.TEXTURE_2D,this.texture);gl.uniform1i(this._loc.tex,0);
-    const shineScale=this.quality==='soft'?.45:this.quality==='deep'?1.35:1;
+    const shineScale=this.quality==='soft'?.24:this.quality==='deep'?.78:.52;
     for(const p of this.primitives){gl.bindBuffer(gl.ARRAY_BUFFER,p.pos);gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0);gl.bindBuffer(gl.ARRAY_BUFFER,p.nor);gl.enableVertexAttribArray(1);gl.vertexAttribPointer(1,3,gl.FLOAT,false,0,0);if(p.uv){gl.bindBuffer(gl.ARRAY_BUFFER,p.uv);gl.enableVertexAttribArray(2);gl.vertexAttribPointer(2,2,gl.FLOAT,false,0,0);}else{gl.disableVertexAttribArray(2);gl.vertexAttrib2f(2,0,0);}gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,p.idx);gl.uniform4fv(this._loc.base,p.base);gl.uniform3fv(this._loc.em,p.em);gl.uniform1f(this._loc.rough,p.rough);gl.uniform1f(this._loc.shine,this.shine*shineScale);gl.uniform1i(this._loc.useTex,p.useTex&&!!this.texture);gl.uniform1i(this._loc.useEm,p.useEm&&!!this.texture);gl.drawElements(gl.TRIANGLES,p.count,p.indexType,0);}
     if(Math.abs(this.targetFlip-this.flip)>.002||this.autoFloat)this.request();
   }
