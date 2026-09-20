@@ -1000,6 +1000,7 @@ body[data-route="home"] .view{overflow:visible!important}
 @keyframes companionRoam{0%{left:37%}45%{left:49%}55%{left:49%}100%{left:61%}}
 .pet-buffer-layer{opacity:0!important;transition:opacity .20s ease-in-out!important;will-change:opacity;backface-visibility:hidden}
 .pet-buffer-layer.is-active{opacity:1!important}
+.paper-pet-image:not(.is-loaded){visibility:hidden}
 
 .companion-status-face-wrap{position:absolute;top:18px;left:18px;z-index:6;width:62px;height:62px;border-radius:22px;background:rgba(255,252,243,.9);border:1px solid rgba(223,216,198,.72);box-shadow:0 6px 16px rgba(70,57,39,.08);display:grid;place-items:center;overflow:hidden}
 .companion-status-face{width:58px;height:58px;object-fit:contain}

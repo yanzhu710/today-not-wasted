@@ -16,10 +16,12 @@ export function petFigure(pet, { interactive = false, onClick = null, onDispose 
     ? new URL('../../' + petAssetPath(def.petId, stage, nextAction).replace(/^\.\//,''), import.meta.url).href
     : new URL(`../../assets/ui/pets/${def.petId}.webp`, import.meta.url).href;
 
-  let disposed = false, token = 0, current = null, activeIndex = 0;
-  const layers = [0,1].map(i => h('img', {
-    class: 'paper-pet-image pet-buffer-layer' + (i === 0 ? ' is-active' : ''), alt: pet.name || '伙伴',
-    width: '1024', height: '1024', decoding: 'async', draggable: 'false', 'aria-hidden': i ? 'true' : 'false',
+  let disposed = false, token = 0, current = null, activeIndex = -1;
+  // Neither buffer layer is active until its image has actually loaded,
+  // otherwise an empty src layer would briefly show a broken-image icon.
+  const layers = [0,1].map(() => h('img', {
+    class: 'paper-pet-image pet-buffer-layer', alt: pet.name || '伙伴',
+    width: '1024', height: '1024', decoding: 'async', draggable: 'false', 'aria-hidden': 'true',
   }));
   if (!primary) layers[1].hidden = true;
 
@@ -40,30 +42,40 @@ export function petFigure(pet, { interactive = false, onClick = null, onDispose 
       img.src = wanted;
       return;
     }
-    if (current === act && layers[activeIndex].classList.contains('is-loaded')) return;
+    if (current === act) return;
     const myToken = ++token;
     const nextIndex = activeIndex === 0 ? 1 : 0;
-    const next = layers[nextIndex], prev = layers[activeIndex];
+    const next = layers[nextIndex], prev = activeIndex >= 0 ? layers[activeIndex] : null;
     const wanted = sourceFor(act);
     next.classList.remove('is-loaded','is-active');
     next.setAttribute('aria-hidden','true');
-    next.onload = () => {
-      if (disposed || myToken !== token) return;
-      requestAnimationFrame(() => {
-        if (disposed || myToken !== token) return;
-        reveal(next);
-        next.classList.add('is-active'); next.setAttribute('aria-hidden','false');
-        prev.classList.remove('is-active'); prev.setAttribute('aria-hidden','true');
-        activeIndex = nextIndex; current = act;
-      });
+    let settled = false;
+    const finish = () => {
+      if (settled || disposed || myToken !== token || next.naturalWidth === 0) return;
+      settled = true;
+      clearInterval(poll);
+      reveal(next);
+      next.classList.add('is-active'); next.setAttribute('aria-hidden','false');
+      if (prev) { prev.classList.remove('is-active'); prev.setAttribute('aria-hidden','true'); }
+      activeIndex = nextIndex; current = act;
     };
+    next.onload = () => requestAnimationFrame(finish);
     next.onerror = () => {
       if (disposed || myToken !== token) return;
+      settled = true; clearInterval(poll);
       if (act !== 'idle') { setSource('idle'); return; }
-      next.hidden = true; fallback.hidden = false;
+      next.classList.remove('is-active'); next.hidden = true; fallback.hidden = false;
     };
     next.src = wanted;
-    if (next.complete && next.naturalWidth) next.onload?.();
+    // Service worker cache-first makes pet images complete almost instantly and
+    // the `load` event is not always re-fired for an already-cached src; polling
+    // complete state guarantees the loaded layer is activated exactly once.
+    const poll = setInterval(() => {
+      if (disposed || myToken !== token) { clearInterval(poll); return; }
+      finish();
+    }, 60);
+    if (next.complete && next.naturalWidth) requestAnimationFrame(finish);
+    setTimeout(() => { if (myToken === token && !disposed) { clearInterval(poll); } }, 6000);
   };
 
   wrap.append(fallback, ...layers);

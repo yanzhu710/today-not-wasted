@@ -1,5 +1,5 @@
 export const APP_NAME = '今天没白过';
-export const APP_VERSION = '2.5.1';
+export const APP_VERSION = '2.5.2';
 export const APP_AUTHOR = 'yanzhu';
 export const RELEASE_HIGHLIGHTS = [
   '伙伴页重新收束：陪伴值、阶段与四阶进度并入主场景，滚动时不再与顶部标题重叠。',
